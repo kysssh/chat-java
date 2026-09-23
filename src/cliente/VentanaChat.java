@@ -1,9 +1,12 @@
 package cliente;
 
 import javax.swing.*;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
+import java.io.File;
+import javax.imageio.ImageIO;
 
 /**
  * La ventana principal del chat (Swing).
@@ -19,6 +22,8 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
     private JTextField campoTexto;
     private JButton botonEnviar;
     private JButton botonPrivado;
+    private JButton botonImagen;
+    private JButton botonCamara;
     private DefaultListModel<String> modeloUsuarios;
     private JList<String> listaUsuarios;
 
@@ -130,9 +135,15 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
 
         botonEnviar = crearBoton("Enviar", colorAccent, fuenteBoton);
         botonPrivado = crearBoton("Privado", colorPrivado, fuenteBoton);
+        botonImagen = crearBoton("🖼 Imagen", new Color(80, 160, 80), fuenteBoton);
+        botonImagen.setPreferredSize(new Dimension(105, 34));
+        botonCamara = crearBoton("📷 Cámara", new Color(140, 80, 180), fuenteBoton);
+        botonCamara.setPreferredSize(new Dimension(105, 34));
 
         JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
         panelBotones.setBackground(fondoOscuro);
+        panelBotones.add(botonImagen);
+        panelBotones.add(botonCamara);
         panelBotones.add(botonPrivado);
         panelBotones.add(botonEnviar);
 
@@ -144,6 +155,8 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         botonEnviar.addActionListener(e -> accionEnviar());
         campoTexto.addActionListener(e -> accionEnviar()); // Enter también envía
         botonPrivado.addActionListener(e -> accionPrivado());
+        botonImagen.addActionListener(e -> accionEnviarArchivoImagen());
+        botonCamara.addActionListener(e -> accionEnviarFoto());
 
         // Al cerrar la ventana → desconectar limpiamente
         addWindowListener(new WindowAdapter() {
@@ -227,7 +240,62 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
     private void desactivarEnvio() {
         botonEnviar.setEnabled(false);
         botonPrivado.setEnabled(false);
+        botonImagen.setEnabled(false);
+        botonCamara.setEnabled(false);
         campoTexto.setEnabled(false);
+    }
+
+    /** Abre un JFileChooser para seleccionar una imagen y enviarla */
+    private void accionEnviarArchivoImagen() {
+        JFileChooser fc = new JFileChooser();
+        fc.setDialogTitle("Seleccionar imagen");
+        fc.setFileFilter(new FileNameExtensionFilter(
+                "Imágenes (JPG, PNG, GIF, BMP)", "jpg", "jpeg", "png", "gif", "bmp"));
+
+        int resultado = fc.showOpenDialog(this);
+        if (resultado == JFileChooser.APPROVE_OPTION) {
+            File archivo = fc.getSelectedFile();
+            try {
+                BufferedImage img = ImageIO.read(archivo);
+                if (img != null) {
+                    clienteRed.enviarImagen(img);
+                } else {
+                    JOptionPane.showMessageDialog(this,
+                        "No se pudo leer la imagen.",
+                        "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this,
+                    "Error al leer el archivo: " + ex.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    /** Toma una foto con la cámara y la envía (en hilo aparte para no congelar) */
+    private void accionEnviarFoto() {
+        new Thread(() -> {
+            BufferedImage foto = Camara.tomarFoto();
+            if (foto == null) {
+                SwingUtilities.invokeLater(() ->
+                    JOptionPane.showMessageDialog(this,
+                        "No se encontró cámara o no se pudo tomar la foto.",
+                        "Cámara", JOptionPane.WARNING_MESSAGE));
+            } else {
+                clienteRed.enviarImagen(foto);
+            }
+        }, "hilo-camara").start();
+    }
+
+    /** Abre una ventanita con la imagen recibida */
+    private void mostrarImagen(String de, BufferedImage img) {
+        JFrame ventanaImg = new JFrame("Imagen de " + de);
+        ventanaImg.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        JLabel label = new JLabel(new ImageIcon(img));
+        ventanaImg.add(new JScrollPane(label));
+        ventanaImg.pack();
+        ventanaImg.setLocationRelativeTo(this);
+        ventanaImg.setVisible(true);
     }
 
     // ================================================================
@@ -249,8 +317,10 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
 
     @Override
     public void alRecibirImagen(String de, BufferedImage imagen) {
-        // Fase 3: se implementará cuando Camara.java esté listo
-        SwingUtilities.invokeLater(() -> agregarLinea("[imagen de " + de + "]"));
+        SwingUtilities.invokeLater(() -> {
+            agregarLinea("[imagen de " + de + "]");
+            mostrarImagen(de, imagen);
+        });
     }
 
     @Override
