@@ -61,9 +61,14 @@ public class ClienteRed {
         }
     }
 
-    /** Envía una imagen (Fase 3) — por ahora el método existe pero no hace nada */
+    /** Envía una imagen codificada en Base64: IMG|base64 */
     public void enviarImagen(java.awt.image.BufferedImage imagen) {
-        // Se implementará en Fase 3 cuando Camara.java esté disponible
+        if (conectado && escritor != null && imagen != null) {
+            String base64 = Camara.aBase64(imagen);
+            if (base64 != null) {
+                escritor.println(Protocolo.armar(Protocolo.IMG, base64));
+            }
+        }
     }
 
     /** Envía SALIR y cierra el socket */
@@ -124,8 +129,14 @@ public class ClienteRed {
                 break;
             }
             case Protocolo.IMG: {
-                // IMG|de|base64 → separar en 3 (Fase 3)
-                // Por ahora se ignora hasta que Camara.java esté listo
+                // IMG|de|base64 → separar en 3
+                String[] pImg = Protocolo.partir(linea, 3);
+                if (pImg.length >= 3) {
+                    java.awt.image.BufferedImage img = Camara.deBase64(pImg[2]);
+                    if (img != null) {
+                        oyente.alRecibirImagen(pImg[1], img);
+                    }
+                }
                 break;
             }
             case Protocolo.INFO: {

@@ -2,7 +2,9 @@ package servidor;
 
 import comun.Protocolo;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -19,19 +21,39 @@ public class Servidor {
     private final int puerto;
     // TreeMap para que la lista de usuarios salga siempre ordenada (ana,juan,pedro)
     private final Map<String, ManejadorCliente> clientes = new TreeMap<>();
-    private final List<ConexionServidor> vecinos = new ArrayList<>();   // Fase 2
+    private final List<ConexionServidor> vecinos = new ArrayList<>();
 
+    /** Uso: Servidor [puertoPropio [hostVecino puertoVecino]] */
     public static void main(String[] args) {
+        if (args.length == 2 || args.length > 3) {
+            System.err.println("Uso: Servidor [puertoPropio [hostVecino puertoVecino]]");
+            return;
+        }
         int puerto = Protocolo.PUERTO_POR_DEFECTO;
-        if (args.length >= 1) {
-            try {
+        int puertoVecino = 0;
+        try {
+            if (args.length >= 1) {
                 puerto = Integer.parseInt(args[0]);
-            } catch (NumberFormatException e) {
-                System.err.println("Puerto inválido: " + args[0]);
+            }
+            if (args.length == 3) {
+                puertoVecino = Integer.parseInt(args[2]);
+            }
+        } catch (NumberFormatException e) {
+            System.err.println("Puerto inválido: " + e.getMessage());
+            return;
+        }
+
+        Servidor servidor = new Servidor(puerto);
+        if (args.length == 3) {
+            try {
+                servidor.conectarAVecino(args[1], puertoVecino);
+            } catch (IOException e) {
+                System.err.println("No se pudo conectar al servidor " + args[1] + ":" + puertoVecino
+                        + " (" + e.getMessage() + ")");
                 return;
             }
         }
-        new Servidor(puerto).iniciar();
+        servidor.iniciar();
     }
 
     public Servidor(int puerto) {
@@ -77,11 +99,16 @@ public class Servidor {
     }
 
     /**
-     * Envía la línea a los clientes locales (y, en la Fase 2, a los servidores vecinos
-     * menos a 'origen'). Por ahora 'origen' siempre es null.
+     * Envía la línea a los clientes locales y a todos los servidores vecinos
+     * menos a 'origen' (el que nos la mandó; null si vino de un cliente local).
      */
     public synchronized void difundir(String linea, ConexionServidor origen) {
         difundirLocal(linea);
+        for (ConexionServidor vecino : vecinos) {
+            if (vecino != origen) {
+                vecino.enviar(linea);
+            }
+        }
     }
 
     /** Envía PRIV|de|texto a 'para'. Devuelve false si ese usuario no está. */
@@ -97,5 +124,33 @@ public class Servidor {
     /** Devuelve "USUARIOS|ana,juan,pedro" con los conectados a este servidor. */
     public synchronized String listaUsuarios() {
         return Protocolo.armar(Protocolo.USUARIOS, String.join(",", clientes.keySet()));
+    }
+
+    // ---- Varios servidores (Fase 2) ----
+
+    /** Nos conectamos a un servidor que ya existe: le decimos SERVIDOR|miPuerto y quedamos como vecinos. */
+    public void conectarAVecino(String host, int puertoVecino) throws IOException {
+        Socket socket = new Socket(host, puertoVecino);
+        try {
+            BufferedReader lector = Protocolo.lector(socket);
+            PrintWriter escritor = Protocolo.escritor(socket);
+            escritor.println(Protocolo.armar(Protocolo.SERVIDOR, String.valueOf(puerto)));
+
+            ConexionServidor conexion = new ConexionServidor(socket, lector, escritor, this);
+            agregarVecino(conexion);
+            new Thread(conexion).start();
+            System.out.println("Conectado al servidor vecino " + host + ":" + puertoVecino);
+        } catch (IOException | RuntimeException e) {
+            socket.close();
+            throw e;
+        }
+    }
+
+    public synchronized void agregarVecino(ConexionServidor c) {
+        vecinos.add(c);
+    }
+
+    public synchronized void quitarVecino(ConexionServidor c) {
+        vecinos.remove(c);
     }
 }
