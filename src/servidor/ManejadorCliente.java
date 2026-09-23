@@ -41,6 +41,17 @@ public class ManejadorCliente implements Runnable {
                 return;
             }
             String[] partes = Protocolo.partir(primera, 2);
+
+            // Si es otro servidor (SERVIDOR|id), esta conexión pasa a ser de un vecino
+            if (partes[0].equals(Protocolo.SERVIDOR)) {
+                ConexionServidor conexion = new ConexionServidor(socket, lector, escritor, servidor);
+                servidor.agregarVecino(conexion);
+                new Thread(conexion).start();
+                // el socket ahora es de ConexionServidor: que el finally no lo cierre
+                cerrado.set(true);
+                return;
+            }
+
             if (!partes[0].equals(Protocolo.NOMBRE) || partes.length < 2) {
                 enviar(Protocolo.armar(Protocolo.ERROR, "se esperaba NOMBRE|nombre"));
                 return;
