@@ -42,6 +42,20 @@ public class Servidor {
             System.err.println("Puerto inválido: " + e.getMessage());
             return;
         }
+        if (!puertoValido(puerto) || (args.length == 3 && !puertoValido(puertoVecino))) {
+            System.err.println("Los puertos deben estar entre 1 y 65535");
+            return;
+        }
+
+        // Primero se abre el puerto propio: si está ocupado no tiene sentido conectarse al vecino
+        // (antes el servidor quedaba colgado, sin puerto pero conectado al vecino)
+        ServerSocket serverSocket;
+        try {
+            serverSocket = new ServerSocket(puerto);
+        } catch (IOException e) {
+            System.err.println("No se pudo abrir el puerto " + puerto + ": " + e.getMessage());
+            return;
+        }
 
         Servidor servidor = new Servidor(puerto);
         if (args.length == 3) {
@@ -50,19 +64,28 @@ public class Servidor {
             } catch (IOException e) {
                 System.err.println("No se pudo conectar al servidor " + args[1] + ":" + puertoVecino
                         + " (" + e.getMessage() + ")");
+                try {
+                    serverSocket.close();
+                } catch (IOException ignorada) {
+                    // se va a cerrar el programa igual
+                }
                 return;
             }
         }
-        servidor.iniciar();
+        servidor.iniciar(serverSocket);
+    }
+
+    private static boolean puertoValido(int p) {
+        return p >= 1 && p <= 65535;
     }
 
     public Servidor(int puerto) {
         this.puerto = puerto;
     }
 
-    /** Abre el puerto y espera clientes para siempre; uno por hilo. */
-    public void iniciar() {
-        try (ServerSocket serverSocket = new ServerSocket(puerto)) {
+    /** Espera clientes para siempre en el puerto ya abierto; uno por hilo. */
+    public void iniciar(ServerSocket abierto) {
+        try (ServerSocket serverSocket = abierto) {
             System.out.println("Servidor escuchando en el puerto " + puerto);
             while (true) {
                 try {
@@ -74,7 +97,7 @@ public class Servidor {
                 }
             }
         } catch (IOException e) {
-            System.err.println("No se pudo abrir el puerto " + puerto + ": " + e.getMessage());
+            System.err.println("Se cerró el puerto " + puerto + ": " + e.getMessage());
         }
     }
 

@@ -14,7 +14,8 @@ chat-java/
 ├── src/
 │   ├── comun/Protocolo.java   el formato de los mensajes (lo usan servidor y cliente)
 │   ├── servidor/              Servidor, ManejadorCliente, ConexionServidor
-│   ├── cliente/               AppCliente, VentanaChat, ClienteRed, OyenteMensajes, Camara
+│   ├── cliente/               AppCliente, DialogoConexion, VentanaChat, PanelMensajes,
+│   │                          Estilo, ClienteRed, OyenteMensajes, Camara
 │   └── pruebas/ClienteConsola.java   cliente de texto para probar sin ventana
 └── guia-chat-java.md          guía de trabajo y descripción del protocolo
 ```
@@ -47,7 +48,7 @@ java -cp "out;lib/*" servidor.Servidor 5000
 # Segundo servidor (5001) conectado al primero
 java -cp "out;lib/*" servidor.Servidor 5001 localhost 5000
 
-# Cliente con ventana (pide nombre, host y puerto)
+# Cliente con ventana (pantalla de conexión: nombre, host y puerto)
 java -cp "out;lib/*" cliente.AppCliente
 
 # Cliente de texto: host puerto nombre
@@ -96,6 +97,18 @@ Cada línea es un mensaje; las partes se separan con `|`. Todo en UTF-8.
 | | `ERROR\|texto` | |
 
 Detalles completos en la sección 3 de [guia-chat-java.md](guia-chat-java.md).
+
+## La ventana del chat
+
+- **Pantalla de conexión:** nombre, servidor y puerto en una sola ventana; los errores salen ahí mismo.
+- **Mensajes en burbujas:** los tuyos a la derecha (azul), los de los demás a la izquierda con su avatar
+  y hora. Los mensajes seguidos de una misma persona se agrupan.
+- **Privados:** elige a alguien en la lista de la derecha y pulsa **Privado** (Enter envía a todos,
+  Esc quita la selección). Se ven en color naranja, también los que tú envías.
+- **Imágenes:** se ven dentro del chat; clic para abrirlas en grande.
+- **Estado:** arriba se ve si estás *En línea*, *Conectando…* o *Desconectado*. Con la ventana en
+  segundo plano, el título cuenta los mensajes sin leer: `(3) Chat — …`.
+- Todo se dibuja con Swing (`cliente.Estilo`), sin librerías extra. Los emojis se ven en un solo color.
 
 ## Imágenes y cámara
 

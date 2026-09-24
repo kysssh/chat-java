@@ -3,6 +3,7 @@ package cliente;
 import comun.Protocolo;
 
 import java.io.*;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 
 /**
@@ -10,6 +11,8 @@ import java.net.Socket;
  * NO tiene nada de ventana: solo red.
  */
 public class ClienteRed {
+
+    private static final int TIEMPO_CONEXION_MS = 5000;
 
     private final OyenteMensajes oyente;
     private Socket socket;
@@ -27,7 +30,10 @@ public class ClienteRed {
      */
     public boolean conectar(String host, int puerto, String nombre) {
         try {
-            socket = new Socket(host, puerto);
+            // Con tiempo límite: a una IP que no responde, new Socket(host, puerto) tarda ~20 s
+            // y la ventana se queda congelada todo ese rato
+            socket = new Socket();
+            socket.connect(new InetSocketAddress(host, puerto), TIEMPO_CONEXION_MS);
             lector = Protocolo.lector(socket);
             escritor = Protocolo.escritor(socket);
             conectado = true;
@@ -43,6 +49,7 @@ public class ClienteRed {
             return true;
         } catch (IOException e) {
             conectado = false;
+            desconectar();
             return false;
         }
     }
