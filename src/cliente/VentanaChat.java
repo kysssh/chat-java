@@ -1,6 +1,9 @@
 package cliente;
 
+import comun.Red;
+
 import javax.imageio.ImageIO;
+import javax.sound.sampled.Mixer;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -12,6 +15,8 @@ import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.net.InetAddress;
+import java.util.Map;
 
 /**
  * La ventana principal del chat (Swing).
@@ -21,6 +26,7 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
 
     private static final long serialVersionUID = 1L;
     private static final String TEXTO_AYUDA_TODOS = "Escribe un mensaje para todos…";
+    private static final String TOOLTIP_MICROFONO = "Grabar una nota de voz (máx. " + Audio.SEGUNDOS_MAX + " s)";
 
     private final String nombre;
     private final String host;
@@ -35,10 +41,22 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
     private JButton botonPrivado;
     private JButton botonImagen;
     private JButton botonCamara;
+    private JButton botonMicrofono;
+    private JButton botonDispositivos;
+    private JPanel centroEntrada;          // CardLayout: campo de texto <-> panel "Grabando..."
+    private JLabel lblGrabando;
+    private Estilo.Medidor medidorGrabacion;
+    private Timer relojGrabacion;
+    private Audio.Grabacion grabacion;     // != null mientras se graba una nota de voz
     private DefaultListModel<String> modeloUsuarios;
     private JList<String> listaUsuarios;
     private JLabel lblEstado;
     private JLabel lblConectados;
+    private JLabel lblIp;
+
+    // Dispositivos elegidos (null = el predeterminado del sistema). Se leen desde otros hilos.
+    private volatile String camaraElegida;
+    private volatile Mixer.Info microfonoElegido;
 
     private boolean desconectado = false;   // solo se usa en el hilo de la ventana
     private int sinLeer = 0;                // mensajes que llegaron con la ventana en segundo plano
@@ -69,7 +87,8 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
                     panelMensajes.agregarError("No se pudo conectar a " + host + ":" + puerto
                             + ". ¿Está prendido el servidor?");
                 } else if (!desconectado) {   // el servidor pudo cerrar la conexión al instante
-                    ponerEstado("En línea · " + host + ":" + puerto, Estilo.EXITO);
+                    ponerEstado("En línea · " + textoServidor(), Estilo.EXITO);
+                    mostrarIp();
                     setEnvioActivo(true);
                     campoTexto.requestFocusInWindow();
                 }
@@ -105,15 +124,25 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         botonPrivado.addActionListener(e -> accionPrivado());
         botonImagen.addActionListener(e -> accionEnviarArchivoImagen());
         botonCamara.addActionListener(e -> accionEnviarFoto());
+        botonMicrofono.addActionListener(e -> accionMicrofono());
+        botonDispositivos.addActionListener(e -> accionDispositivos());
 
-        // Escape: quitar al destinatario del privado
-        raiz.registerKeyboardAction(e -> listaUsuarios.clearSelection(),
-                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JComponent.WHEN_IN_FOCUSED_WINDOW);
+        // Escape: cancelar la nota de voz, o quitar al destinatario del privado
+        raiz.registerKeyboardAction(e -> {
+            if (grabacion != null) {
+                terminarGrabacion(false);
+            } else {
+                listaUsuarios.clearSelection();
+            }
+        }, KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JComponent.WHEN_IN_FOCUSED_WINDOW);
 
         addWindowListener(new WindowAdapter() {
             // Al cerrar la ventana → desconectar limpiamente
             @Override
             public void windowClosing(WindowEvent e) {
+                if (grabacion != null) {
+                    grabacion.cancelar();
+                }
                 clienteRed.desconectar();
                 dispose();
                 System.exit(0);
@@ -147,6 +176,37 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         lblEstado.setIconTextGap(6);
         textos.add(lblEstado);
         cabecera.add(textos, BorderLayout.CENTER);
+
+        // Derecha: "Tu IP" y el botón de dispositivos
+        JPanel ip = new JPanel(new GridLayout(2, 1, 0, 1));
+        ip.setOpaque(false);
+        JLabel tituloIp = Estilo.etiqueta("TU IP", Font.BOLD, 10, Estilo.TEXTO_SUAVE);
+        tituloIp.setHorizontalAlignment(SwingConstants.RIGHT);
+        lblIp = Estilo.etiqueta(Red.ipPrincipal(), Font.BOLD, 14, Estilo.TEXTO);
+        lblIp.setHorizontalAlignment(SwingConstants.RIGHT);
+        ip.add(tituloIp);
+        ip.add(lblIp);
+        ip.setToolTipText(textoTodasLasIps());
+        ip.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        ip.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                copiarIp();
+            }
+        });
+
+        botonDispositivos = new Estilo.Boton("Dispositivos", new Estilo.Icono(Estilo.Icono.Tipo.AJUSTES, 15),
+                Estilo.SUPERFICIE, Estilo.TEXTO);
+        botonDispositivos.setToolTipText("Elegir cámara y micrófono");
+
+        JPanel derecha = new JPanel(new FlowLayout(FlowLayout.RIGHT, 16, 0));
+        derecha.setOpaque(false);
+        derecha.add(ip);
+        derecha.add(botonDispositivos);
+        JPanel centrado = new JPanel(new GridBagLayout());   // para centrarlo en vertical
+        centrado.setOpaque(false);
+        centrado.add(derecha);
+        cabecera.add(centrado, BorderLayout.EAST);
         return cabecera;
     }
 
@@ -198,13 +258,51 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         botonCamara = new Estilo.Boton("", new Estilo.Icono(Estilo.Icono.Tipo.CAMARA, 18),
                 Estilo.SUPERFICIE, Estilo.TEXTO);
         botonCamara.setToolTipText("Tomar una foto con la cámara y enviarla");
+        botonMicrofono = new Estilo.Boton("", new Estilo.Icono(Estilo.Icono.Tipo.MICROFONO, 18),
+                Estilo.SUPERFICIE, Estilo.TEXTO);
+        botonMicrofono.setToolTipText(TOOLTIP_MICROFONO);
 
-        JPanel izquierda = new JPanel(new GridLayout(1, 2, 6, 0));
+        JPanel izquierda = new JPanel(new GridLayout(1, 3, 6, 0));
         izquierda.setOpaque(false);
         izquierda.add(botonImagen);
         izquierda.add(botonCamara);
+        izquierda.add(botonMicrofono);
 
         campoTexto = new Estilo.Campo(TEXTO_AYUDA_TODOS);
+
+        // Lo que se ve en lugar del campo de texto mientras se graba
+        JPanel panelGrabando = new JPanel(new BorderLayout(12, 0)) {
+            private static final long serialVersionUID = 1L;
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = Estilo.suave(g);
+                g2.setColor(Estilo.FONDO_PELIGRO);
+                g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 12, 12));
+                g2.dispose();
+            }
+        };
+        panelGrabando.setOpaque(false);
+        panelGrabando.setBorder(new EmptyBorder(0, 14, 0, 14));
+        lblGrabando = Estilo.etiqueta("Grabando 0:00", Font.BOLD, 13, Estilo.PELIGRO);
+        lblGrabando.setIcon(Estilo.punto(Estilo.PELIGRO));
+        lblGrabando.setIconTextGap(8);
+        medidorGrabacion = new Estilo.Medidor(120, 6);
+        JPanel medio = new JPanel(new GridBagLayout());
+        medio.setOpaque(false);
+        GridBagConstraints gc = new GridBagConstraints();
+        gc.fill = GridBagConstraints.HORIZONTAL;
+        gc.weightx = 1;
+        medio.add(medidorGrabacion, gc);
+        JLabel ayudaGrabando = Estilo.etiqueta("Enviar = mandar  ·  Esc = cancelar", Font.PLAIN, 12, Estilo.TEXTO_SUAVE);
+        panelGrabando.add(lblGrabando, BorderLayout.WEST);
+        panelGrabando.add(medio, BorderLayout.CENTER);
+        panelGrabando.add(ayudaGrabando, BorderLayout.EAST);
+
+        centroEntrada = new JPanel(new CardLayout());
+        centroEntrada.setOpaque(false);
+        centroEntrada.add(campoTexto, "texto");
+        centroEntrada.add(panelGrabando, "grabando");
+        relojGrabacion = new Timer(200, e -> actualizarGrabacion());
 
         botonPrivado = new Estilo.Boton("Privado", new Estilo.Icono(Estilo.Icono.Tipo.CANDADO, 14),
                 Estilo.SUPERFICIE, Estilo.PRIVADO);
@@ -218,7 +316,7 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         derecha.add(botonEnviar);
 
         barra.add(izquierda, BorderLayout.WEST);
-        barra.add(campoTexto, BorderLayout.CENTER);
+        barra.add(centroEntrada, BorderLayout.CENTER);
         barra.add(derecha, BorderLayout.EAST);
         actualizarDestinatario();
         return barra;
@@ -250,6 +348,7 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         botonPrivado.setEnabled(activo);
         botonImagen.setEnabled(activo);
         botonCamara.setEnabled(activo);
+        botonMicrofono.setEnabled(activo);
         campoTexto.setEnabled(activo);
     }
 
@@ -257,8 +356,12 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
     //  Acciones de los botones
     // ================================================================
 
-    /** Enviar mensaje público */
+    /** Enviar mensaje público (o, si se está grabando, la nota de voz) */
     private void accionEnviar() {
+        if (grabacion != null) {
+            terminarGrabacion(true);
+            return;
+        }
         String texto = campoTexto.getText().trim();
         if (!texto.isEmpty()) {
             clienteRed.enviarMensaje(texto);
@@ -323,7 +426,7 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         botonCamara.setEnabled(false);
         botonCamara.setToolTipText("Tomando la foto…");
         new Thread(() -> {
-            BufferedImage foto = Camara.tomarFoto();
+            BufferedImage foto = Camara.tomarFoto(camaraElegida);
             SwingUtilities.invokeLater(() -> {
                 botonCamara.setEnabled(campoTexto.isEnabled());
                 botonCamara.setToolTipText("Tomar una foto con la cámara y enviarla");
@@ -335,6 +438,136 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
                 clienteRed.enviarImagen(foto);
             }
         }, "hilo-camara").start();
+    }
+
+    // ================================================================
+    //  Notas de voz
+    // ================================================================
+
+    /** Primer clic: empieza a grabar. Segundo clic: termina y la envía. */
+    private void accionMicrofono() {
+        if (grabacion != null) {
+            terminarGrabacion(true);
+            return;
+        }
+        try {
+            grabacion = Audio.Grabacion.iniciar(microfonoElegido,
+                    nivel -> SwingUtilities.invokeLater(() -> medidorGrabacion.setNivel(nivel)));
+        } catch (Exception e) {
+            panelMensajes.agregarError("No se pudo abrir el micrófono. Revisa que esté conectado "
+                    + "o elige otro en Dispositivos.");
+            return;
+        }
+        ((CardLayout) centroEntrada.getLayout()).show(centroEntrada, "grabando");
+        botonMicrofono.setToolTipText("Terminar y enviar la nota de voz");
+        botonMicrofono.setIcon(new Estilo.Icono(Estilo.Icono.Tipo.DETENER, 18));
+        botonMicrofono.setForeground(Estilo.PELIGRO);
+        botonPrivado.setEnabled(false);
+        botonImagen.setEnabled(false);
+        botonCamara.setEnabled(false);
+        botonDispositivos.setEnabled(false);
+        actualizarGrabacion();
+        relojGrabacion.start();
+    }
+
+    /** Actualiza el "Grabando 0:07" y corta sola al llegar al máximo. */
+    private void actualizarGrabacion() {
+        if (grabacion == null) {
+            return;
+        }
+        lblGrabando.setText("Grabando " + PanelMensajes.formatoTiempo(grabacion.segundos())
+                + " / " + PanelMensajes.formatoTiempo(Audio.SEGUNDOS_MAX));
+        if (grabacion.llena()) {
+            terminarGrabacion(true);
+        }
+    }
+
+    /** Termina la grabación; si enviar es true, manda la nota (en otro hilo: convertirla tarda). */
+    private void terminarGrabacion(boolean enviar) {
+        Audio.Grabacion g = grabacion;
+        grabacion = null;
+        relojGrabacion.stop();
+        ((CardLayout) centroEntrada.getLayout()).show(centroEntrada, "texto");
+        botonMicrofono.setToolTipText(TOOLTIP_MICROFONO);
+        botonMicrofono.setIcon(new Estilo.Icono(Estilo.Icono.Tipo.MICROFONO, 18));
+        botonMicrofono.setForeground(Estilo.TEXTO);
+        botonDispositivos.setEnabled(true);
+        setEnvioActivo(!desconectado);
+        campoTexto.requestFocusInWindow();
+        if (g == null) {
+            return;
+        }
+        if (!enviar) {
+            g.cancelar();
+            return;
+        }
+        new Thread(() -> {
+            try {
+                byte[] wav = g.detener();
+                if (wav == null) {
+                    SwingUtilities.invokeLater(() ->
+                        panelMensajes.agregarAviso("La nota de voz fue muy corta y no se envió."));
+                } else {
+                    clienteRed.enviarAudio(wav);
+                }
+            } catch (Exception e) {
+                SwingUtilities.invokeLater(() ->
+                    panelMensajes.agregarError("No se pudo preparar la nota de voz: " + e.getMessage()));
+            }
+        }, "hilo-nota-voz").start();
+    }
+
+    // ================================================================
+    //  Dispositivos e IP
+    // ================================================================
+
+    private void accionDispositivos() {
+        DialogoDispositivos.Eleccion e = DialogoDispositivos.pedir(this, camaraElegida, microfonoElegido);
+        if (e == null) {
+            return;   // canceló
+        }
+        camaraElegida = e.camara;
+        microfonoElegido = e.microfono;
+        panelMensajes.agregarAviso("Cámara: " + (e.camara == null ? "predeterminada" : e.camara)
+                + "  ·  Micrófono: " + (e.microfono == null ? "predeterminado" : e.microfono.getName()));
+    }
+
+    /** "servidor 192.168.1.10:5000", o "servidor en esta PC" si es localhost. */
+    private String textoServidor() {
+        InetAddress dir = clienteRed.getDireccionServidor();
+        if (dir == null) {
+            return host + ":" + puerto;
+        }
+        if (dir.isLoopbackAddress()) {
+            return "servidor en esta PC (puerto " + puerto + ")";
+        }
+        return "servidor " + dir.getHostAddress() + ":" + puerto;
+    }
+
+    /**
+     * La IP con la que se conectó al servidor. Si el servidor está en esta misma PC, la conexión
+     * usa 127.0.0.1, así que se muestra la IP de la red (la que deben usar los demás).
+     */
+    private void mostrarIp() {
+        String ip = clienteRed.getIpLocal();
+        if (ip == null || ip.startsWith("127.")) {
+            ip = Red.ipPrincipal();
+        }
+        lblIp.setText(ip);
+    }
+
+    private static String textoTodasLasIps() {
+        StringBuilder sb = new StringBuilder("<html><b>IPs de esta PC</b> (clic para copiar)");
+        for (Map.Entry<String, String> e : Red.ipsLocales().entrySet()) {
+            sb.append("<br>").append(e.getKey()).append(" — ").append(e.getValue());
+        }
+        return sb.append("</html>").toString();
+    }
+
+    private void copiarIp() {
+        Toolkit.getDefaultToolkit().getSystemClipboard()
+                .setContents(new java.awt.datatransfer.StringSelection(lblIp.getText()), null);
+        panelMensajes.agregarAviso("IP copiada: " + lblIp.getText());
     }
 
     /** Abre una ventanita con la imagen recibida */
@@ -391,6 +624,14 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
     }
 
     @Override
+    public void alRecibirAudio(String de, byte[] wav) {
+        SwingUtilities.invokeLater(() -> {
+            panelMensajes.agregarAudio(de, wav);
+            avisarNuevo();
+        });
+    }
+
+    @Override
     public void alRecibirInfo(String texto) {
         SwingUtilities.invokeLater(() -> panelMensajes.agregarAviso(texto));
     }
@@ -427,6 +668,9 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
                 return;
             }
             desconectado = true;
+            if (grabacion != null) {
+                terminarGrabacion(false);
+            }
             panelMensajes.agregarError("Se perdió la conexión con el servidor.");
             ponerEstado("Desconectado", Estilo.PELIGRO);
             setEnvioActivo(false);

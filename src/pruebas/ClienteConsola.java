@@ -56,7 +56,7 @@ public class ClienteConsola {
                 try {
                     String linea;
                     while ((linea = lector.readLine()) != null) {
-                        pantalla.println(linea);
+                        pantalla.println(resumir(linea));
                     }
                 } catch (IOException e) {
                     // conexión cerrada
@@ -90,6 +90,15 @@ public class ClienteConsola {
         } catch (IOException e) {
             System.err.println("No se pudo conectar a " + host + ":" + puerto + " (" + e.getMessage() + ")");
         }
+    }
+
+    /** IMG y AUDIO traen cientos de KB en Base64: se muestra solo quién lo mandó y cuánto pesa. */
+    private static String resumir(String linea) {
+        String[] p = Protocolo.partir(linea, 3);
+        if (p.length == 3 && (p[0].equals(Protocolo.IMG) || p[0].equals(Protocolo.AUDIO))) {
+            return p[0] + "|" + p[1] + "|(" + (p[2].length() / 1024) + " KB en Base64)";
+        }
+        return linea;
     }
 
     /** En Windows la consola no suele ser UTF-8; usar la suya evita ver "Ã±" al probar. */

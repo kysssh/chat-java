@@ -1,6 +1,7 @@
 package servidor;
 
 import comun.Protocolo;
+import comun.Red;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -87,6 +88,7 @@ public class Servidor {
     public void iniciar(ServerSocket abierto) {
         try (ServerSocket serverSocket = abierto) {
             System.out.println("Servidor escuchando en el puerto " + puerto);
+            mostrarDirecciones();
             while (true) {
                 try {
                     Socket socket = serverSocket.accept();
@@ -99,6 +101,15 @@ public class Servidor {
         } catch (IOException e) {
             System.err.println("Se cerró el puerto " + puerto + ": " + e.getMessage());
         }
+    }
+
+    /** Dice en consola a qué IP se deben conectar los clientes (y los otros servidores). */
+    private void mostrarDirecciones() {
+        System.out.println("Los clientes pueden conectarse a:");
+        for (Map.Entry<String, String> ip : Red.ipsLocales().entrySet()) {
+            System.out.println("   " + ip.getKey() + " : " + puerto + "   (" + ip.getValue() + ")");
+        }
+        System.out.println("   localhost : " + puerto + "   (desde esta misma PC)");
     }
 
     /** Guarda al cliente. Devuelve false si ya hay alguien con ese nombre. */

@@ -13,7 +13,9 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 
 /**
  * Ayuda para las imágenes del chat (Nivel 3): pasar una imagen a texto y de texto a imagen,
@@ -24,6 +26,7 @@ public class Camara {
     private static final int ANCHO_MAX = 320;
     private static final int ALTO_MAX = 240;
     private static final float CALIDAD_JPG = 0.75f;
+    private static final long ESPERA_MS = 5000;   // máximo para buscar cámaras (si no, podría colgarse)
 
     private Camara() {}
 
@@ -83,14 +86,36 @@ public class Camara {
     }
 
     /**
-     * Abre la cámara, toma una foto, la cierra y la devuelve.
+     * Nombres de las cámaras conectadas (lista vacía si no hay o la librería no carga).
+     * La primera vez tarda un poco: llamarla desde un hilo aparte.
+     */
+    public static List<String> camaras() {
+        List<String> nombres = new ArrayList<>();
+        try {
+            for (Webcam w : Webcam.getWebcams(ESPERA_MS)) {
+                nombres.add(w.getName());
+            }
+        } catch (Throwable t) {   // incluye NoClassDefFoundError si falta la librería en lib/
+            // sin cámaras
+        }
+        return nombres;
+    }
+
+    /** Foto con la cámara predeterminada. */
+    public static BufferedImage tomarFoto() {
+        return tomarFoto(null);
+    }
+
+    /**
+     * Abre la cámara con ese nombre (null = la predeterminada), toma una foto, la cierra y la devuelve.
      * Devuelve null si no hay cámara, la librería no carga o algo falla: NUNCA lanza excepción.
      * Puede tardar 1–2 s: llamarla desde un hilo aparte, no desde el de la ventana.
+     * synchronized: la misma cámara no se puede abrir dos veces a la vez.
      */
-    public static BufferedImage tomarFoto() {
+    public static synchronized BufferedImage tomarFoto(String nombreCamara) {
         Webcam cam = null;
         try {
-            cam = Webcam.getDefault();
+            cam = buscar(nombreCamara);
             if (cam == null) {
                 return null;
             }
@@ -118,5 +143,17 @@ public class Camara {
                 }
             }
         }
+    }
+
+    private static Webcam buscar(String nombre) throws Exception {
+        if (nombre != null) {
+            for (Webcam w : Webcam.getWebcams(ESPERA_MS)) {
+                if (w.getName().equals(nombre)) {
+                    return w;
+                }
+            }
+            // ya no está conectada: se usa la predeterminada
+        }
+        return Webcam.getDefault(ESPERA_MS);
     }
 }

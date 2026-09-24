@@ -96,6 +96,7 @@ NOMBRE|nombre        NOMBRE|juan              2        Primera línea al conecta
 MSG|texto            MSG|hola a todos         2        Mensaje para todos.
 PRIV|para|texto      PRIV|ana|hola ana        3        Mensaje privado (solo mismo servidor).
 IMG|base64           IMG|/9j/4AAQSk...        2        Imagen convertida a texto (Nivel 3).
+AUDIO|base64         AUDIO|UklGRi...          2        Nota de voz: WAV convertido a texto (Nivel 3).
 SALIR                SALIR                    1        Me desconecto.
 ```
 
@@ -106,6 +107,7 @@ MENSAJE              EJEMPLO                  PARTES   SIGNIFICADO
 MSG|de|texto         MSG|juan|hola a todos    3        Alguien escribió a todos.
 PRIV|de|texto        PRIV|juan|hola ana       3        Te escribieron en privado.
 IMG|de|base64        IMG|juan|/9j/4AAQSk...   3        Alguien mandó una imagen.
+AUDIO|de|base64      AUDIO|juan|UklGRi...     3        Alguien mandó una nota de voz.
 INFO|texto           INFO|juan se unió        2        Aviso del sistema (entró / salió alguien).
 USUARIOS|a,b,c       USUARIOS|ana,juan        2        Lista de conectados en ESTE servidor.
 ERROR|texto          ERROR|nombre en uso      2        Algo salió mal.
@@ -117,7 +119,7 @@ ERROR|texto          ERROR|nombre en uso      2        Algo salió mal.
 SERVIDOR|id          SERVIDOR|5001            2        Primera línea: "no soy cliente, soy otro servidor".
 ```
 
-Después de esa línea, los servidores simplemente se pasan las líneas `MSG|...`, `INFO|...` e `IMG|...` **tal cual**.
+Después de esa línea, los servidores simplemente se pasan las líneas `MSG|...`, `INFO|...`, `IMG|...` y `AUDIO|...` **tal cual**.
 (No se pasan `USUARIOS`, `PRIV` ni `ERROR`: esos son solo locales.)
 
 ### Ejemplo de una conversación completa
@@ -161,6 +163,7 @@ public final class Protocolo {
     public static final String MSG      = "MSG";
     public static final String PRIV     = "PRIV";
     public static final String IMG      = "IMG";
+    public static final String AUDIO    = "AUDIO";   // agregado después: notas de voz
     public static final String SALIR    = "SALIR";
     public static final String INFO     = "INFO";
     public static final String USUARIOS = "USUARIOS";

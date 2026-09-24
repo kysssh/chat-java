@@ -174,7 +174,7 @@ final class Estilo {
     // ---- Íconos dibujados con líneas (así no dependen de emojis ni de archivos) ----
 
     static class Icono implements Icon {
-        enum Tipo { ENVIAR, IMAGEN, CAMARA, CANDADO, CHAT }
+        enum Tipo { ENVIAR, IMAGEN, CAMARA, CANDADO, CHAT, MICROFONO, DETENER, PLAY, AJUSTES }
 
         private final Tipo tipo;
         private final int tam;
@@ -240,6 +240,37 @@ final class Estilo {
                 case CHAT:
                     g2.fill(formaChat());
                     break;
+                case MICROFONO: {
+                    g2.draw(new RoundRectangle2D.Float(6.5f, 1.5f, 5, 9.5f, 5, 5));
+                    g2.draw(new Arc2D.Float(3.5f, 4, 11, 9.5f, 180, 180, Arc2D.OPEN));
+                    g2.draw(new java.awt.geom.Line2D.Float(9, 13.5f, 9, 16.5f));
+                    g2.draw(new java.awt.geom.Line2D.Float(6, 16.5f, 12, 16.5f));
+                    break;
+                }
+                case DETENER:
+                    g2.fill(new RoundRectangle2D.Float(4, 4, 10, 10, 3, 3));
+                    break;
+                case PLAY: {
+                    Path2D p = new Path2D.Float();
+                    p.moveTo(5.5, 3);
+                    p.lineTo(15, 9);
+                    p.lineTo(5.5, 15);
+                    p.closePath();
+                    g2.fill(p);
+                    break;
+                }
+                case AJUSTES: {
+                    // tres perillas deslizables
+                    float[] ys = {4, 9, 14};
+                    float[] xs = {12, 6, 10.5f};
+                    for (int i = 0; i < 3; i++) {
+                        g2.draw(new java.awt.geom.Line2D.Float(2, ys[i], 16, ys[i]));
+                    }
+                    for (int i = 0; i < 3; i++) {
+                        g2.fill(new Ellipse2D.Float(xs[i] - 2.3f, ys[i] - 2.3f, 4.6f, 4.6f));
+                    }
+                    break;
+                }
             }
             g2.dispose();
         }
@@ -470,6 +501,80 @@ final class Estilo {
         barra.setPreferredSize(new Dimension(10, 0));
         barra.setUnitIncrement(16);
         return sp;
+    }
+
+    // ---- Lista desplegable oscura ----
+
+    /** JComboBox con el tema oscuro (el del sistema en Windows no deja cambiarle los colores). */
+    static <T> JComboBox<T> combo() {
+        JComboBox<T> c = new JComboBox<>();
+        c.setUI(new javax.swing.plaf.basic.BasicComboBoxUI() {
+            @Override
+            protected JButton createArrowButton() {
+                JButton b = new javax.swing.plaf.basic.BasicArrowButton(SwingConstants.SOUTH,
+                        SUPERFICIE, SUPERFICIE, TEXTO_SUAVE, SUPERFICIE);
+                b.setBorder(new EmptyBorder(0, 4, 0, 8));
+                return b;
+            }
+
+            @Override
+            public void paintCurrentValueBackground(Graphics g, Rectangle r, boolean foco) {
+                g.setColor(SUPERFICIE);
+                g.fillRect(r.x, r.y, r.width, r.height);
+            }
+        });
+        c.setBackground(SUPERFICIE);
+        c.setForeground(TEXTO);
+        c.setFont(fuente(Font.PLAIN, 13));
+        c.setBorder(BorderFactory.createLineBorder(BORDE));
+        c.setRenderer(new DefaultListCellRenderer() {
+            private static final long serialVersionUID = 1L;
+            @Override
+            public Component getListCellRendererComponent(JList<?> lista, Object valor, int i,
+                                                          boolean elegido, boolean foco) {
+                super.getListCellRendererComponent(lista, valor, i, elegido, false);
+                setBorder(new EmptyBorder(7, 10, 7, 10));
+                setFont(fuentePara(String.valueOf(valor), Font.PLAIN, 13));
+                setBackground(elegido && i >= 0 ? ACENTO : SUPERFICIE);
+                setForeground(elegido && i >= 0 ? Color.WHITE : TEXTO);
+                return this;
+            }
+        });
+        return c;
+    }
+
+    // ---- Medidor de volumen ----
+
+    /** Barra que muestra el volumen del micrófono (0 a 1). Baja suave para que se lea bien. */
+    static class Medidor extends JComponent {
+        private static final long serialVersionUID = 1L;
+        private double nivel = 0;
+
+        Medidor(int ancho, int alto) {
+            setPreferredSize(new Dimension(ancho, alto));
+        }
+
+        void setNivel(double nuevo) {
+            // Sube al instante y baja de a poco
+            nivel = Math.max(nuevo, nivel * 0.8);
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = suave(g);
+            int alto = getHeight();
+            g2.setColor(SUPERFICIE_2);
+            g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), alto, alto, alto));
+            // raíz cuadrada: la voz normal queda a media barra y no casi vacía
+            double visible = Math.sqrt(Math.max(0, Math.min(1, nivel)));
+            int lleno = (int) Math.round(getWidth() * visible);
+            if (lleno > 0) {
+                g2.setColor(visible > 0.92 ? PELIGRO : EXITO);
+                g2.fill(new RoundRectangle2D.Float(0, 0, Math.max(lleno, alto), alto, alto, alto));
+            }
+            g2.dispose();
+        }
     }
 
     /** Etiqueta con fuente y color en una línea. */

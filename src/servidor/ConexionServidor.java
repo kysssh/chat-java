@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Conexión con OTRO servidor (un "vecino"). Corre en su propio hilo y se pasa
- * con él las líneas MSG, INFO e IMG tal cual.
+ * con él las líneas MSG, INFO, IMG y AUDIO tal cual.
  */
 public class ConexionServidor implements Runnable {
 
@@ -36,8 +36,9 @@ public class ConexionServidor implements Runnable {
             String linea;
             while ((linea = lector.readLine()) != null) {
                 String tipo = Protocolo.partir(linea, 2)[0];
-                // Solo estos tres viajan entre servidores; USUARIOS, PRIV y ERROR son locales
-                if (tipo.equals(Protocolo.MSG) || tipo.equals(Protocolo.INFO) || tipo.equals(Protocolo.IMG)) {
+                // Solo estos viajan entre servidores; USUARIOS, PRIV y ERROR son locales
+                if (tipo.equals(Protocolo.MSG) || tipo.equals(Protocolo.INFO)
+                        || tipo.equals(Protocolo.IMG) || tipo.equals(Protocolo.AUDIO)) {
                     servidor.difundir(linea, this);
                 }
             }

@@ -17,6 +17,9 @@ public interface OyenteMensajes {
     /** Llega una imagen: "IMG|de|base64" (ya decodificada) */
     void alRecibirImagen(String de, BufferedImage imagen);
 
+    /** Llega una nota de voz: "AUDIO|de|base64" (ya decodificada: bytes de un WAV) */
+    void alRecibirAudio(String de, byte[] wav);
+
     /** Aviso del sistema: "INFO|texto" */
     void alRecibirInfo(String texto);
 

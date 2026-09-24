@@ -3,6 +3,7 @@ package cliente;
 import comun.Protocolo;
 
 import java.io.*;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 
@@ -15,7 +16,7 @@ public class ClienteRed {
     private static final int TIEMPO_CONEXION_MS = 5000;
 
     private final OyenteMensajes oyente;
-    private Socket socket;
+    private volatile Socket socket;
     private PrintWriter escritor;
     private BufferedReader lector;
     private volatile boolean conectado = false;
@@ -76,6 +77,25 @@ public class ClienteRed {
                 escritor.println(Protocolo.armar(Protocolo.IMG, base64));
             }
         }
+    }
+
+    /** Envía una nota de voz (bytes de un WAV): AUDIO|base64 */
+    public void enviarAudio(byte[] wav) {
+        if (conectado && escritor != null && wav != null) {
+            escritor.println(Protocolo.armar(Protocolo.AUDIO, Audio.aBase64(wav)));
+        }
+    }
+
+    /** IP de esta PC en la conexión con el servidor (null si no está conectado). */
+    public String getIpLocal() {
+        Socket s = socket;
+        return s == null || !s.isConnected() ? null : s.getLocalAddress().getHostAddress();
+    }
+
+    /** IP real del servidor (por ejemplo "localhost" → 127.0.0.1), o null si no está conectado. */
+    public InetAddress getDireccionServidor() {
+        Socket s = socket;
+        return s == null || !s.isConnected() ? null : s.getInetAddress();
     }
 
     /** Envía SALIR y cierra el socket */
@@ -142,6 +162,17 @@ public class ClienteRed {
                     java.awt.image.BufferedImage img = Camara.deBase64(pImg[2]);
                     if (img != null) {
                         oyente.alRecibirImagen(pImg[1], img);
+                    }
+                }
+                break;
+            }
+            case Protocolo.AUDIO: {
+                // AUDIO|de|base64 → separar en 3
+                String[] pAudio = Protocolo.partir(linea, 3);
+                if (pAudio.length >= 3) {
+                    byte[] wav = Audio.deBase64(pAudio[2]);
+                    if (wav != null) {
+                        oyente.alRecibirAudio(pAudio[1], wav);
                     }
                 }
                 break;

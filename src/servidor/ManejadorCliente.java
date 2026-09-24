@@ -106,8 +106,9 @@ public class ManejadorCliente implements Runnable {
                 break;
 
             case Protocolo.IMG:
+            case Protocolo.AUDIO:   // IMG|base64 y AUDIO|base64 se reparten igual: TIPO|de|base64
                 if (p.length > 1 && !p[1].isEmpty()) {
-                    servidor.difundir(Protocolo.armar(Protocolo.IMG, nombre, p[1]), null);
+                    servidor.difundir(Protocolo.armar(p[0], nombre, p[1]), null);
                 }
                 break;
 

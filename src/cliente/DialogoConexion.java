@@ -1,6 +1,7 @@
 package cliente;
 
 import comun.Protocolo;
+import comun.Red;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -112,6 +113,12 @@ class DialogoConexion extends JDialog {
         c.insets = new Insets(0, 0, 0, 0);
         contenido.add(conectar, c);
         getRootPane().setDefaultButton(conectar);   // Enter en cualquier campo = Conectar
+
+        // IP de esta PC: la que deben escribir los demás si el servidor corre aquí
+        JLabel lblIp = Estilo.etiqueta("Tu IP en la red: " + Red.ipPrincipal(), Font.PLAIN, 12, Estilo.TEXTO_SUAVE);
+        lblIp.setHorizontalAlignment(SwingConstants.CENTER);
+        c.insets = new Insets(14, 0, 0, 0);
+        contenido.add(lblIp, c);
 
         // Escape cierra
         getRootPane().registerKeyboardAction(e -> dispose(),

@@ -21,6 +21,7 @@ public final class Protocolo {
     public static final String MSG      = "MSG";      // mensaje para todos
     public static final String PRIV     = "PRIV";     // mensaje privado
     public static final String IMG      = "IMG";      // imagen (Nivel 3)
+    public static final String AUDIO    = "AUDIO";    // nota de voz: WAV en Base64 (Nivel 3)
     public static final String SALIR    = "SALIR";    // me desconecto
     public static final String INFO     = "INFO";     // aviso del sistema (entró/salió alguien)
     public static final String USUARIOS = "USUARIOS"; // lista de conectados

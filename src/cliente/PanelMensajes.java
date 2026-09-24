@@ -83,6 +83,13 @@ class PanelMensajes extends JPanel implements Scrollable {
         agregarBurbuja(de, mio, m, mio ? Estilo.ACENTO : Estilo.BURBUJA_OTRO, null, "msg|" + de, mio);
     }
 
+    /** Nota de voz: botón para escucharla, barra de avance y duración. */
+    void agregarAudio(String de, byte[] wav) {
+        boolean mio = de.equals(miNombre);
+        NotaVoz nota = new NotaVoz(wav, mio, this);
+        agregarBurbuja(de, mio, nota, mio ? Estilo.ACENTO : Estilo.BURBUJA_OTRO, null, "msg|" + de, mio);
+    }
+
     /** Aviso del sistema: una pastillita gris centrada. */
     void agregarAviso(String texto) {
         agregarPastilla(texto, Estilo.SUPERFICIE, Estilo.TEXTO_SUAVE);
@@ -111,6 +118,9 @@ class PanelMensajes extends JPanel implements Scrollable {
         hora.setHorizontalAlignment(SwingConstants.RIGHT);
         if (contenido instanceof Miniatura) {
             hora.setBorder(new EmptyBorder(0, 0, 0, 4));
+        }
+        if (contenido instanceof NotaVoz) {
+            burbuja.setBorder(new EmptyBorder(8, 8, 5, 12));
         }
         burbuja.add(hora, BorderLayout.SOUTH);
 
@@ -341,6 +351,131 @@ class PanelMensajes extends JPanel implements Scrollable {
             g2.drawImage(img, 0, 0, ancho, alto, null);
             g2.dispose();
         }
+    }
+
+    /**
+     * Nota de voz. Solo suena una a la vez: al darle play a otra, la anterior se detiene.
+     */
+    private static class NotaVoz extends JComponent {
+        private static final long serialVersionUID = 1L;
+        private static NotaVoz sonando;   // la que está sonando ahora (solo hilo de la ventana)
+        private final byte[] wav;
+        private final double segundos;
+        private final boolean mio;
+        private final PanelMensajes panel;
+        private final Timer avance;
+        private javax.sound.sampled.Clip clip;
+        private double progreso = 0;   // 0 a 1
+
+        NotaVoz(byte[] wav, boolean mio, PanelMensajes panel) {
+            this.wav = wav;
+            this.segundos = Audio.duracion(wav);
+            this.mio = mio;
+            this.panel = panel;
+            setPreferredSize(new Dimension(230, 36));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setToolTipText("Nota de voz: clic para escuchar");
+            // Mientras suena, la barra avanza
+            avance = new Timer(50, e -> actualizar());
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    if (clip != null) {
+                        detener();
+                    } else {
+                        reproducir();
+                    }
+                }
+            });
+        }
+
+        private void reproducir() {
+            if (sonando != null) {
+                sonando.detener();
+            }
+            try {
+                clip = Audio.reproducir(wav);
+                sonando = this;
+                avance.start();
+            } catch (Exception ex) {
+                clip = null;
+                panel.agregarError("No se pudo reproducir la nota de voz (¿hay parlantes o audífonos?).");
+            }
+            repaint();
+        }
+
+        private void detener() {
+            if (clip != null) {
+                clip.stop();   // al parar, Audio cierra el clip
+                clip = null;
+            }
+            avance.stop();
+            progreso = 0;
+            if (sonando == this) {
+                sonando = null;
+            }
+            repaint();
+        }
+
+        private void actualizar() {
+            if (clip == null) {
+                return;
+            }
+            long total = clip.getMicrosecondLength();
+            if (!clip.isOpen() || (!clip.isRunning() && clip.getMicrosecondPosition() >= total)) {
+                detener();   // terminó
+                return;
+            }
+            progreso = total > 0 ? (double) clip.getMicrosecondPosition() / total : 0;
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = Estilo.suave(g);
+            int alto = getHeight();
+            int d = 32;
+            int y = (alto - d) / 2;
+
+            // Botón redondo ▶ / ■
+            g2.setColor(mio ? Color.WHITE : Estilo.ACENTO);
+            g2.fillOval(0, y, d, d);
+            JLabel tinta = new JLabel();
+            tinta.setForeground(mio ? Estilo.ACENTO : Color.WHITE);
+            new Estilo.Icono(clip != null ? Estilo.Icono.Tipo.DETENER : Estilo.Icono.Tipo.PLAY, 16)
+                    .paintIcon(tinta, g2, (d - 16) / 2 + (clip != null ? 0 : 1), y + (d - 16) / 2);
+
+            // Duración a la derecha
+            double restante = clip != null ? segundos * (1 - progreso) : segundos;
+            String tiempo = formatoTiempo(restante);
+            g2.setFont(Estilo.fuente(Font.PLAIN, 12));
+            FontMetrics fm = g2.getFontMetrics();
+            int anchoTiempo = fm.stringWidth("0:00");
+            Color suave = mio ? Estilo.conAlfa(Color.WHITE, 200) : Estilo.TEXTO_SUAVE;
+            g2.setColor(suave);
+            g2.drawString(tiempo, getWidth() - anchoTiempo - 2, (alto - fm.getHeight()) / 2 + fm.getAscent());
+
+            // Barra de avance
+            int x0 = d + 12;
+            int ancho = getWidth() - x0 - anchoTiempo - 14;
+            int grosor = 4;
+            int yb = (alto - grosor) / 2;
+            g2.setColor(mio ? Estilo.conAlfa(Color.WHITE, 90) : Estilo.SUPERFICIE_2);
+            g2.fill(new RoundRectangle2D.Float(x0, yb, ancho, grosor, grosor, grosor));
+            int lleno = (int) (ancho * progreso);
+            g2.setColor(mio ? Color.WHITE : Estilo.ACENTO);
+            if (lleno > 0) {
+                g2.fill(new RoundRectangle2D.Float(x0, yb, lleno, grosor, grosor, grosor));
+            }
+            g2.fillOval(x0 + lleno - 5, alto / 2 - 5, 10, 10);
+            g2.dispose();
+        }
+    }
+
+    /** 75.4 → "1:15" */
+    static String formatoTiempo(double segundos) {
+        int s = (int) Math.ceil(Math.max(0, segundos));
+        return (s / 60) + ":" + String.format("%02d", s % 60);
     }
 
     // ================================================================
