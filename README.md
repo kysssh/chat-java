@@ -167,7 +167,12 @@ chat esté abierto.
 ## Videollamada
 
 Elige a alguien en la lista de la derecha y pulsa **Videollamada**. A la otra persona le suena y
-le aparece **Contestar** / **Rechazar**; si nadie contesta en 40 s, la llamada se cancela.
+le aparece **Contestar** / **Rechazar**, y tú ves *Sonando…*; si nadie contesta en 40 s, la llamada
+se cancela.
+
+> **Los tres tienen que estar al día:** el servidor y los dos chats. Después de actualizar el código
+> hay que **volver a compilar y cerrar y abrir de nuevo el servidor y los clientes**: un programa que
+> ya estaba abierto sigue usando la versión con la que arrancó.
 
 - Ves al otro en grande y a ti abajo a la derecha (como en un espejo; al otro le llegas sin voltear).
 - **Micrófono** silencia, **Cámara** la apaga (el otro ve tu avatar y un micrófono tachado si
@@ -182,7 +187,7 @@ El micrófono manda trozos de 40 ms a 8000 Hz en μ-law (`VOZ|para|…`, 25 por 
 parlantes descartan el audio que llega atrasado para que la voz no se retrase. En total son
 unos 150–250 KB/s por persona: sin problema en WiFi de casa o de un celular.
 
-Los avisos de la llamada van en `LLAMADA|para|accion`, con `accion` = `INVITAR`, `ACEPTAR`,
+Los avisos de la llamada van en `LLAMADA|para|accion`, con `accion` = `INVITAR`, `SONANDO`, `ACEPTAR`,
 `RECHAZAR`, `OCUPADO`, `COLGAR`, `CAMARA_ON` / `CAMARA_OFF`, `MICROFONO_ON` / `MICROFONO_OFF`.
 Si esa persona no está conectada, el servidor responde `LLAMADA|para|NO_DISPONIBLE`.
 
@@ -207,6 +212,8 @@ Si esa persona no está conectada, el servidor responde `LLAMADA|para|NO_DISPONI
 | La foto no funciona | Se puede seguir enviando imagen desde archivo. Prueba otra cámara en **Dispositivos** (cierra otros programas que la usen). |
 | La barra del micrófono no se mueve | Elige otro en **Dispositivos**. En Windows: Configuración › Privacidad › Micrófono → permitir a las apps de escritorio. |
 | La nota de voz no suena | Revisa que haya parlantes o audífonos conectados y el volumen de la PC. |
+| Al llamar: *El servidor no tiene videollamadas* (antes: `Error del servidor: comando desconocido`) | El servidor es de una versión anterior: ciérralo, vuelve a compilar y ábrelo de nuevo. |
+| Al otro no le suena (te sale *Si a … no le suena, debe abrir la versión nueva del chat*) | Su chat es de antes: que actualice el código, compile y vuelva a abrir el chat. |
 | En la llamada se oye eco o un pitido | Usa audífonos (el micrófono capta lo que sale por los parlantes). |
 | El video de la llamada va lento o a saltos | Red lenta: acérquense al WiFi o usen el hotspot de un celular. El audio sigue aunque el video se trabe. |
 | "No se pudo abrir la cámara" en la llamada | Otro programa (o el espejo de la foto) la está usando: ciérralo o elige otra en **Dispositivos**. |

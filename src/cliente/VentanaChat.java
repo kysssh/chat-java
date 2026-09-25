@@ -793,7 +793,14 @@ public class VentanaChat extends JFrame implements OyenteMensajes, VentanaLlamad
 
     @Override
     public void alRecibirError(String texto) {
-        SwingUtilities.invokeLater(() -> panelMensajes.agregarError("Error del servidor: " + texto));
+        SwingUtilities.invokeLater(() -> {
+            // Un servidor de antes de las videollamadas responde así a LLAMADA: se explica en la llamada
+            VentanaLlamada l = llamada;
+            if ("comando desconocido".equals(texto) && l != null && l.servidorSinVideollamadas()) {
+                return;
+            }
+            panelMensajes.agregarError("Error del servidor: " + texto);
+        });
     }
 
     @Override

@@ -120,13 +120,15 @@ ERROR|texto          ERROR|nombre en uso      2        Algo salió mal.
 ```
 
 **Videollamada.** `LLAMADA`, `VIDEO` y `VOZ` se reparten como `PRIV`: solo a `para`, y solo dentro
-del mismo servidor. Las acciones de `LLAMADA` son `INVITAR`, `ACEPTAR`, `RECHAZAR`, `OCUPADO`,
+del mismo servidor. Las acciones de `LLAMADA` son `INVITAR`, `SONANDO`, `ACEPTAR`, `RECHAZAR`, `OCUPADO`,
 `COLGAR`, `CAMARA_ON`, `CAMARA_OFF`, `MICROFONO_ON` y `MICROFONO_OFF`. Si `para` no está conectado,
 el servidor le responde al que llama `LLAMADA|para|NO_DISPONIBLE`.
 
 ```
 juan → servidor :  LLAMADA|ana|INVITAR
 servidor → ana  :  LLAMADA|juan|INVITAR      ← a ana le suena
+ana  → servidor :  LLAMADA|juan|SONANDO      ← juan ve "Sonando…" (si no llega, el chat de ana es de antes)
+servidor → juan :  LLAMADA|ana|SONANDO
 ana  → servidor :  LLAMADA|juan|ACEPTAR
 servidor → juan :  LLAMADA|ana|ACEPTAR       ← empieza la llamada
 juan → servidor :  VIDEO|ana|/9j/...  y  VOZ|ana|/f7+...   (muchas veces por segundo, los dos)

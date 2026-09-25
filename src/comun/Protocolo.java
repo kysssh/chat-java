@@ -35,6 +35,7 @@ public final class Protocolo {
 
     // Acciones de LLAMADA
     public static final String INVITAR       = "INVITAR";        // quiero llamarte
+    public static final String SONANDO       = "SONANDO";        // me llegó tu invitación y me está sonando
     public static final String ACEPTAR       = "ACEPTAR";        // contesto
     public static final String RECHAZAR      = "RECHAZAR";       // no contesto
     public static final String OCUPADO       = "OCUPADO";        // ya estoy en otra llamada

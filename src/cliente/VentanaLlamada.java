@@ -45,6 +45,8 @@ class VentanaLlamada extends JFrame {
     private static final int VIDEO_ALTO = 300;
     private static final float VIDEO_CALIDAD = 0.6f;
     private static final int SEGUNDOS_PARA_CONTESTAR = 40;
+    /** Tiempo para que el chat del otro confirme que le suena (en la misma red tarda milisegundos). */
+    private static final int SEGUNDOS_PARA_SONAR = 6;
     private static final int MS_ANTES_DE_CERRAR = 2000;
 
     private final ClienteRed red;
@@ -83,6 +85,8 @@ class VentanaLlamada extends JFrame {
     private boolean dispositivosCargados = false;
     private Timer reloj;
     private Timer esperaRespuesta;
+    private Timer esperaSonando;              // si el otro no avisa SONANDO, quizás su chat es de antes
+    private boolean leSono = false;           // llegó SONANDO: la invitación sí le llegó al otro
 
     // ================================================================
     //  Crear
@@ -335,7 +339,17 @@ class VentanaLlamada extends JFrame {
         esperaRespuesta = unaVez(SEGUNDOS_PARA_CONTESTAR * 1000, () -> {
             if (estado == Estado.LLAMANDO) {
                 red.enviarLlamada(otro, Protocolo.COLGAR);
-                terminar(otro + " no contestó");
+                terminar(leSono ? otro + " no contestó"
+                        : "La llamada no le llegó a " + otro + ": debe abrir la versión nueva del chat");
+            }
+        });
+        // Un chat al día responde SONANDO al instante. Si no llega, avisamos que quizás el otro tiene
+        // una versión anterior (o un cliente de consola). No se corta: las versiones que tienen
+        // videollamada pero no SONANDO sí suenan, y cortarles sería peor.
+        esperaSonando = unaVez(SEGUNDOS_PARA_SONAR * 1000, () -> {
+            if (estado == Estado.LLAMANDO && !leSono) {
+                remoto.sinImagen(otro, "Esperando que le suene a " + otro + "…");
+                avisar("Si a " + otro + " no le suena, debe abrir la versión nueva del chat.", Estilo.ESPERA);
             }
         });
         setVisible(true);
@@ -359,6 +373,7 @@ class VentanaLlamada extends JFrame {
         setAlwaysOnTop(true);   // que se vea aunque el chat esté detrás de otras ventanas
         setVisible(true);
         toFront();
+        red.enviarLlamada(otro, Protocolo.SONANDO);   // el que llama ve "Sonando…"
     }
 
     private void contestar() {
@@ -421,6 +436,18 @@ class VentanaLlamada extends JFrame {
         }
     }
 
+    /**
+     * El servidor respondió "comando desconocido" mientras llamábamos: es una versión anterior,
+     * sin videollamadas. Devuelve true si la llamada lo tomó como suyo (y terminó).
+     */
+    boolean servidorSinVideollamadas() {
+        if (estado != Estado.LLAMANDO) {
+            return false;
+        }
+        terminar("El servidor no tiene videollamadas: ciérralo y vuelve a abrirlo con la versión nueva");
+        return true;
+    }
+
     /** El otro salió del chat en plena llamada. */
     void otroSeDesconecto() {
         terminar(otro + " se desconectó");
@@ -479,6 +506,16 @@ class VentanaLlamada extends JFrame {
                 return;
             }
             switch (accion) {
+                case Protocolo.SONANDO:
+                    if (estado == Estado.LLAMANDO) {
+                        leSono = true;
+                        pararTimer(esperaSonando);
+                        esperaSonando = null;
+                        ponerEstado("Sonando…", Estilo.ESPERA);
+                        remoto.sinImagen(otro, "Le está sonando a " + otro + "…");
+                        avisar(" ", Estilo.TEXTO_SUAVE);
+                    }
+                    break;
                 case Protocolo.ACEPTAR:
                     if (estado == Estado.LLAMANDO) {
                         enCurso();
@@ -758,9 +795,15 @@ class VentanaLlamada extends JFrame {
             timbre.detener();
             timbre = null;
         }
-        if (esperaRespuesta != null) {
-            esperaRespuesta.stop();
-            esperaRespuesta = null;
+        pararTimer(esperaRespuesta);
+        esperaRespuesta = null;
+        pararTimer(esperaSonando);
+        esperaSonando = null;
+    }
+
+    private static void pararTimer(Timer t) {
+        if (t != null) {
+            t.stop();
         }
     }
 
