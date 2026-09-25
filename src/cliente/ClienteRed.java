@@ -6,6 +6,7 @@ import java.io.*;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.Base64;
 
 /**
  * Todo lo que tiene que ver con el socket del lado del cliente.
@@ -83,6 +84,27 @@ public class ClienteRed {
     public void enviarAudio(byte[] wav) {
         if (conectado && escritor != null && wav != null) {
             escritor.println(Protocolo.armar(Protocolo.AUDIO, Audio.aBase64(wav)));
+        }
+    }
+
+    /** Aviso de videollamada: LLAMADA|para|accion */
+    public void enviarLlamada(String para, String accion) {
+        if (conectado && escritor != null) {
+            escritor.println(Protocolo.armar(Protocolo.LLAMADA, para, accion));
+        }
+    }
+
+    /** Un cuadro de video ya convertido a JPG en Base64: VIDEO|para|base64 */
+    public void enviarVideo(String para, String base64) {
+        if (conectado && escritor != null && base64 != null) {
+            escritor.println(Protocolo.armar(Protocolo.VIDEO, para, base64));
+        }
+    }
+
+    /** Un trozo de audio en vivo (μ-law): VOZ|para|base64 */
+    public void enviarVoz(String para, byte[] ulaw) {
+        if (conectado && escritor != null && ulaw != null && ulaw.length > 0) {
+            escritor.println(Protocolo.armar(Protocolo.VOZ, para, Base64.getEncoder().encodeToString(ulaw)));
         }
     }
 
@@ -173,6 +195,37 @@ public class ClienteRed {
                     byte[] wav = Audio.deBase64(pAudio[2]);
                     if (wav != null) {
                         oyente.alRecibirAudio(pAudio[1], wav);
+                    }
+                }
+                break;
+            }
+            case Protocolo.LLAMADA: {
+                // LLAMADA|de|accion
+                String[] p = Protocolo.partir(linea, 3);
+                if (p.length >= 3) {
+                    oyente.alRecibirLlamada(p[1], p[2]);
+                }
+                break;
+            }
+            case Protocolo.VIDEO: {
+                // VIDEO|de|base64
+                String[] p = Protocolo.partir(linea, 3);
+                if (p.length >= 3) {
+                    java.awt.image.BufferedImage cuadro = Camara.deBase64(p[2]);
+                    if (cuadro != null) {
+                        oyente.alRecibirVideo(p[1], cuadro);
+                    }
+                }
+                break;
+            }
+            case Protocolo.VOZ: {
+                // VOZ|de|base64
+                String[] p = Protocolo.partir(linea, 3);
+                if (p.length >= 3) {
+                    try {
+                        oyente.alRecibirVoz(p[1], Base64.getDecoder().decode(p[2]));
+                    } catch (IllegalArgumentException ignorada) {
+                        // trozo dañado: se salta, es solo un instante de audio
                     }
                 }
                 break;

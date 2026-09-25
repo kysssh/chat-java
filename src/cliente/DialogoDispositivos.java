@@ -8,13 +8,11 @@ import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.awt.geom.RoundRectangle2D;
-import java.awt.image.BufferedImage;
 import java.util.List;
 
 /**
  * Ventana para elegir la cámara y el micrófono (por si hay varios conectados).
- * La cámara se prueba con una foto de muestra y el micrófono con una barra de volumen.
+ * La cámara elegida se ve en vivo y el micrófono mueve una barra de volumen.
  */
 class DialogoDispositivos extends JDialog {
 
@@ -34,7 +32,7 @@ class DialogoDispositivos extends JDialog {
     }
 
     /** Un elemento de la lista desplegable: el texto que se ve y el valor que representa. */
-    private static class Opcion<T> {
+    static class Opcion<T> {   // también la usan DialogoFoto y VentanaLlamada
         final String texto;
         final T valor;
 
@@ -51,9 +49,8 @@ class DialogoDispositivos extends JDialog {
 
     private final JComboBox<Opcion<String>> comboCamara = Estilo.combo();
     private final JComboBox<Opcion<Mixer.Info>> comboMicrofono = Estilo.combo();
-    private final Estilo.Boton botonProbar =
-            new Estilo.Boton("Probar", new Estilo.Icono(Estilo.Icono.Tipo.CAMARA, 15), Estilo.SUPERFICIE_2, Estilo.TEXTO);
-    private final Vista vista = new Vista();
+    private final VistaVideo vista = new VistaVideo(360, 240, 14, false);
+    private Camara.EnVivo camaraPrueba;      // la cámara prendida solo para verla aquí
     private final Estilo.Medidor medidor = new Estilo.Medidor(320, 8);
     private final JLabel lblMicrofono = Estilo.etiqueta(AYUDA_MICROFONO, Font.PLAIN, 12, Estilo.TEXTO_SUAVE);
     private Audio.Grabacion prueba;          // el micrófono abierto solo para mover la barra
@@ -95,17 +92,10 @@ class DialogoDispositivos extends JDialog {
         // ---- Cámara ----
         c.insets = new Insets(0, 0, 6, 0);
         contenido.add(seccion("CÁMARA", Estilo.Icono.Tipo.CAMARA), c);
-        c.gridwidth = 1;
-        c.insets = new Insets(0, 0, 10, 8);
-        contenido.add(comboCamara, c);
-        c.gridx = 1;
-        c.weightx = 0;
         c.insets = new Insets(0, 0, 10, 0);
-        contenido.add(botonProbar, c);
-        c.gridx = 0;
-        c.gridwidth = 2;
-        c.weightx = 1;
+        contenido.add(comboCamara, c);
         c.insets = new Insets(0, 0, 20, 0);
+        vista.setEspejo(true);   // uno se ve como en un espejo
         contenido.add(vista, c);
 
         // ---- Micrófono ----
@@ -135,10 +125,14 @@ class DialogoDispositivos extends JDialog {
 
         cargarMicrofonos(microfonoActual);
         cargarCamaras(camaraActual);
-        botonProbar.addActionListener(e -> probarCamara());
+        comboCamara.addActionListener(e -> {
+            if (camarasCargadas) {
+                verCamara();
+            }
+        });
         comboMicrofono.addActionListener(e -> probarMicrofono());
 
-        // Al cerrar (con Guardar, Cancelar o la X) se suelta el micrófono
+        // Al cerrar (con Guardar, Cancelar o la X) se sueltan el micrófono y la cámara
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowOpened(WindowEvent e) {
@@ -148,6 +142,7 @@ class DialogoDispositivos extends JDialog {
             @Override
             public void windowClosed(WindowEvent e) {
                 soltarMicrofono();
+                soltarCamara();
             }
         });
 
@@ -179,16 +174,15 @@ class DialogoDispositivos extends JDialog {
     private void cargarCamaras(String actual) {
         comboCamara.addItem(new Opcion<>("Buscando cámaras…", null));
         comboCamara.setEnabled(false);
-        botonProbar.setEnabled(false);
-        vista.mostrarTexto("Buscando cámaras…");
+        vista.sinImagen(null, "Buscando cámaras…");
         new Thread(() -> {
             List<String> camaras = Camara.camaras();
             SwingUtilities.invokeLater(() -> {
                 comboCamara.removeAllItems();
-                camarasCargadas = true;
                 if (camaras.isEmpty()) {
+                    camarasCargadas = true;
                     comboCamara.addItem(new Opcion<>("No se encontró ninguna cámara", null));
-                    vista.mostrarTexto("Conecta una cámara y vuelve a abrir esta ventana.");
+                    vista.sinImagen(null, "Conecta una cámara y vuelve a abrir esta ventana.");
                     return;
                 }
                 comboCamara.addItem(new Opcion<>("Predeterminada del sistema", null));
@@ -199,30 +193,26 @@ class DialogoDispositivos extends JDialog {
                     }
                 }
                 comboCamara.setEnabled(true);
-                botonProbar.setEnabled(true);
-                vista.mostrarTexto("Pulsa Probar para ver la imagen de la cámara elegida.");
+                camarasCargadas = true;   // desde aquí, elegir en la lista cambia la vista
+                verCamara();
             });
         }, "hilo-buscar-camaras").start();
     }
 
-    private void probarCamara() {
+    /** Prende en vivo la cámara elegida en la lista (y apaga la que se estaba viendo). */
+    private void verCamara() {
+        soltarCamara();
         Opcion<String> elegida = comboCamara.getItemAt(comboCamara.getSelectedIndex());
-        String nombre = elegida == null ? null : elegida.valor;
-        botonProbar.setEnabled(false);
-        comboCamara.setEnabled(false);
-        vista.mostrarTexto("Abriendo la cámara…");
-        new Thread(() -> {
-            BufferedImage foto = Camara.tomarFoto(nombre);
-            SwingUtilities.invokeLater(() -> {
-                botonProbar.setEnabled(true);
-                comboCamara.setEnabled(true);
-                if (foto == null) {
-                    vista.mostrarTexto("No se pudo abrir esta cámara (¿la está usando otro programa?).");
-                } else {
-                    vista.mostrarImagen(foto);
-                }
-            });
-        }, "hilo-probar-camara").start();
+        vista.sinImagen(null, "Abriendo la cámara…");
+        camaraPrueba = Camara.EnVivo.iniciar(elegida == null ? null : elegida.valor, 15, vista::mostrar,
+                mensaje -> SwingUtilities.invokeLater(() -> vista.sinImagen(null, mensaje)));
+    }
+
+    private void soltarCamara() {
+        if (camaraPrueba != null) {
+            camaraPrueba.detener();
+            camaraPrueba = null;
+        }
     }
 
     // ================================================================
@@ -259,56 +249,6 @@ class DialogoDispositivos extends JDialog {
         if (prueba != null) {
             prueba.cancelar();
             prueba = null;
-        }
-    }
-
-    // ================================================================
-    //  Recuadro de vista previa
-    // ================================================================
-
-    private static class Vista extends JComponent {
-        private static final long serialVersionUID = 1L;
-        private BufferedImage imagen;
-        private String texto = "";
-
-        Vista() {
-            setPreferredSize(new Dimension(360, 210));
-        }
-
-        void mostrarTexto(String t) {
-            texto = t;
-            imagen = null;
-            repaint();
-        }
-
-        void mostrarImagen(BufferedImage img) {
-            imagen = img;
-            repaint();
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            Graphics2D g2 = Estilo.suave(g);
-            RoundRectangle2D forma = new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 14, 14);
-            g2.setColor(Estilo.FONDO);
-            g2.fill(forma);
-            if (imagen != null) {
-                // Imagen entera, centrada, sin deformar
-                double escala = Math.min((double) getWidth() / imagen.getWidth(),
-                        (double) getHeight() / imagen.getHeight());
-                int w = (int) (imagen.getWidth() * escala);
-                int h = (int) (imagen.getHeight() * escala);
-                g2.clip(forma);
-                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-                g2.drawImage(imagen, (getWidth() - w) / 2, (getHeight() - h) / 2, w, h, null);
-            } else {
-                g2.setColor(Estilo.TEXTO_SUAVE);
-                g2.setFont(Estilo.fuente(Font.PLAIN, 12));
-                FontMetrics fm = g2.getFontMetrics();
-                g2.drawString(texto, (getWidth() - fm.stringWidth(texto)) / 2,
-                        (getHeight() - fm.getHeight()) / 2 + fm.getAscent());
-            }
-            g2.dispose();
         }
     }
 }

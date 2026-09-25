@@ -5,6 +5,7 @@ Chat simple con sockets, sin base de datos ni contraseñas. Funciona por niveles
 1. **Nivel 1:** un servidor y varios clientes; todos ven los mensajes de todos.
 2. **Nivel 2:** varios servidores conectados entre sí; un cliente de un servidor habla con uno de otro.
 3. **Nivel 3:** envío de imágenes (desde archivo), fotos tomadas con la cámara y notas de voz.
+4. **Videollamada:** cámara y micrófono en vivo entre dos personas del mismo servidor.
 
 ## Estructura
 
@@ -15,8 +16,8 @@ chat-java/
 │   ├── comun/                 Protocolo (formato de los mensajes) y Red (IPs de esta PC)
 │   ├── servidor/              Servidor, ManejadorCliente, ConexionServidor
 │   ├── cliente/               AppCliente, DialogoConexion, VentanaChat, PanelMensajes,
-│   │                          DialogoDispositivos, Estilo, ClienteRed, OyenteMensajes,
-│   │                          Camara, Audio
+│   │                          DialogoDispositivos, DialogoFoto, VentanaLlamada, VistaVideo,
+│   │                          Estilo, ClienteRed, OyenteMensajes, Camara, Audio
 │   └── pruebas/ClienteConsola.java   cliente de texto para probar sin ventana
 └── guia-chat-java.md          guía de trabajo y descripción del protocolo
 ```
@@ -25,7 +26,8 @@ chat-java/
 
 - **JDK 8 o superior.** Si tu `java` y tu `javac` son de versiones distintas (compruébalo con
   `java -version` y `javac -version`), compila con `--release 8` para que las clases corran en ambos.
-- Para la cámara: una webcam. Sin webcam el chat funciona igual y solo falla el botón de foto.
+- Para la cámara: una webcam. Sin webcam el chat funciona igual; solo no hay foto ni video
+  (en la videollamada se ve tu avatar y el otro te escucha igual).
 - Para las notas de voz: un micrófono y parlantes o audífonos. No hace falta ninguna librería
   (se usa `javax.sound`, que viene con Java).
 
@@ -108,6 +110,9 @@ Cada línea es un mensaje; las partes se separan con `|`. Todo en UTF-8.
 | `IMG\|base64` | `AUDIO\|de\|base64` | |
 | `AUDIO\|base64` | `INFO\|texto` | |
 | `SALIR` | `USUARIOS\|a,b,c` | |
+| `LLAMADA\|para\|accion` | `LLAMADA\|de\|accion` | (no viajan entre servidores) |
+| `VIDEO\|para\|base64` | `VIDEO\|de\|base64` | |
+| `VOZ\|para\|base64` | `VOZ\|de\|base64` | |
 | | `ERROR\|texto` | |
 
 Detalles completos en la sección 3 de [guia-chat-java.md](guia-chat-java.md).
@@ -125,6 +130,11 @@ Detalles completos en la sección 3 de [guia-chat-java.md](guia-chat-java.md).
 - Todo se dibuja con Swing (`cliente.Estilo`), sin librerías extra. Los emojis se ven en un solo color.
 
 ## Imágenes y cámara
+
+El botón de la cámara abre un **espejo**: te ves en vivo para acomodarte, pulsas **Tomar foto**
+(o Espacio) y la foto queda congelada para revisarla. Solo se envía si pulsas **Enviar foto**;
+**Repetir** vuelve a la cámara. Ahí mismo puedes cambiar de cámara y quitar el espejo
+(con el espejo activo, la foto sale tal cual te viste).
 
 `cliente.Camara` reduce la imagen a un máximo de 320×240, la pasa a JPG y la envía como texto Base64
 en una sola línea (`IMG|...`), así que pesa unos 15–30 KB. La foto usa la librería
@@ -146,15 +156,41 @@ telefónica, 8 KB por segundo) y lo envía como WAV en Base64 en una línea (`AU
 Botón **Dispositivos** arriba a la derecha. Lista las cámaras (librería webcam-capture) y los
 micrófonos (`javax.sound`) conectados:
 
-- **Cámara:** elígela y pulsa **Probar** para ver una foto de muestra.
+- **Cámara:** al elegirla se ve en vivo, así sabes cuál es.
 - **Micrófono:** al elegirlo, la barra verde se mueve con tu voz.
 - *Predeterminado del sistema* usa el que tenga marcado Windows / Mac / Linux.
 
-La elección dura mientras el chat esté abierto.
+También se puede cambiar de cámara en el espejo de la foto, y de cámara o micrófono en plena
+videollamada (botón **Dispositivos** de la llamada), sin cortarla. La elección dura mientras el
+chat esté abierto.
+
+## Videollamada
+
+Elige a alguien en la lista de la derecha y pulsa **Videollamada**. A la otra persona le suena y
+le aparece **Contestar** / **Rechazar**; si nadie contesta en 40 s, la llamada se cancela.
+
+- Ves al otro en grande y a ti abajo a la derecha (como en un espejo; al otro le llegas sin voltear).
+- **Micrófono** silencia, **Cámara** la apaga (el otro ve tu avatar y un micrófono tachado si
+  estás en silencio), **Dispositivos** cambia de cámara o micrófono y **Colgar** termina.
+- Al terminar queda en el chat, por ejemplo: *Videollamada con ana · 3:12*.
+- Si te llaman estando en otra llamada, al otro le sale *está en otra llamada*.
+- **Usa audífonos:** sin cancelación de eco, lo que sale por tus parlantes vuelve a entrar por tu micrófono.
+
+Cómo viaja: todo pasa por el servidor, igual que el resto del chat. La cámara manda unos
+12 cuadros por segundo, cada uno un JPG de 400×300 en Base64 (`VIDEO|para|…`, unos 10–20 KB).
+El micrófono manda trozos de 40 ms a 8000 Hz en μ-law (`VOZ|para|…`, 25 por segundo) y los
+parlantes descartan el audio que llega atrasado para que la voz no se retrase. En total son
+unos 150–250 KB/s por persona: sin problema en WiFi de casa o de un celular.
+
+Los avisos de la llamada van en `LLAMADA|para|accion`, con `accion` = `INVITAR`, `ACEPTAR`,
+`RECHAZAR`, `OCUPADO`, `COLGAR`, `CAMARA_ON` / `CAMARA_OFF`, `MICROFONO_ON` / `MICROFONO_OFF`.
+Si esa persona no está conectada, el servidor responde `LLAMADA|para|NO_DISPONIBLE`.
 
 ## Limitaciones conocidas
 
-- La lista de usuarios (`USUARIOS`) y los mensajes privados (`PRIV`) son solo del servidor local.
+- La lista de usuarios (`USUARIOS`), los mensajes privados (`PRIV`) y las videollamadas
+  (`LLAMADA`, `VIDEO`, `VOZ`) son solo del servidor local.
+- La videollamada es de dos personas y no cancela el eco: con parlantes se oye repetido.
 - Un nombre repetido solo se rechaza dentro del mismo servidor, no entre servidores distintos.
 - Si un servidor se cae, los mensajes no cruzan hacia los servidores que dependían de él, y los demás
   no reciben el aviso de salida de sus clientes.
@@ -171,3 +207,6 @@ La elección dura mientras el chat esté abierto.
 | La foto no funciona | Se puede seguir enviando imagen desde archivo. Prueba otra cámara en **Dispositivos** (cierra otros programas que la usen). |
 | La barra del micrófono no se mueve | Elige otro en **Dispositivos**. En Windows: Configuración › Privacidad › Micrófono → permitir a las apps de escritorio. |
 | La nota de voz no suena | Revisa que haya parlantes o audífonos conectados y el volumen de la PC. |
+| En la llamada se oye eco o un pitido | Usa audífonos (el micrófono capta lo que sale por los parlantes). |
+| El video de la llamada va lento o a saltos | Red lenta: acérquense al WiFi o usen el hotspot de un celular. El audio sigue aunque el video se trabe. |
+| "No se pudo abrir la cámara" en la llamada | Otro programa (o el espejo de la foto) la está usando: ciérralo o elige otra en **Dispositivos**. |

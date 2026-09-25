@@ -22,11 +22,12 @@ import java.util.Map;
  * La ventana principal del chat (Swing).
  * Implementa OyenteMensajes para recibir eventos de la red.
  */
-public class VentanaChat extends JFrame implements OyenteMensajes {
+public class VentanaChat extends JFrame implements OyenteMensajes, VentanaLlamada.Oyente {
 
     private static final long serialVersionUID = 1L;
     private static final String TEXTO_AYUDA_TODOS = "Escribe un mensaje para todos…";
     private static final String TOOLTIP_MICROFONO = "Grabar una nota de voz (máx. " + Audio.SEGUNDOS_MAX + " s)";
+    private static final String TOOLTIP_CAMARA = "Tomar una foto: primero te ves en la cámara y luego decides si enviarla";
 
     private final String nombre;
     private final String host;
@@ -43,6 +44,7 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
     private JButton botonCamara;
     private JButton botonMicrofono;
     private JButton botonDispositivos;
+    private JButton botonVideollamada;
     private JPanel centroEntrada;          // CardLayout: campo de texto <-> panel "Grabando..."
     private JLabel lblGrabando;
     private Estilo.Medidor medidorGrabacion;
@@ -57,6 +59,9 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
     // Dispositivos elegidos (null = el predeterminado del sistema). Se leen desde otros hilos.
     private volatile String camaraElegida;
     private volatile Mixer.Info microfonoElegido;
+
+    // La videollamada en curso (o null). Se cambia en el hilo de la ventana y se lee también desde el de red.
+    private volatile VentanaLlamada llamada;
 
     private boolean desconectado = false;   // solo se usa en el hilo de la ventana
     private int sinLeer = 0;                // mensajes que llegaron con la ventana en segundo plano
@@ -126,6 +131,7 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         botonCamara.addActionListener(e -> accionEnviarFoto());
         botonMicrofono.addActionListener(e -> accionMicrofono());
         botonDispositivos.addActionListener(e -> accionDispositivos());
+        botonVideollamada.addActionListener(e -> accionVideollamada());
 
         // Escape: cancelar la nota de voz, o quitar al destinatario del privado
         raiz.registerKeyboardAction(e -> {
@@ -142,6 +148,10 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
             public void windowClosing(WindowEvent e) {
                 if (grabacion != null) {
                     grabacion.cancelar();
+                }
+                VentanaLlamada l = llamada;
+                if (l != null && !l.terminada()) {
+                    l.colgar();   // avisa al otro antes de irse
                 }
                 clienteRed.desconectar();
                 dispose();
@@ -230,8 +240,8 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         listaUsuarios.addListSelectionListener(e -> actualizarDestinatario());
         lateral.add(Estilo.scroll(listaUsuarios, Estilo.PANEL), BorderLayout.CENTER);
 
-        JTextArea ayuda = new JTextArea("Elige a alguien de la lista y pulsa Privado "
-                + "para que solo esa persona lo lea. Esc para quitarlo.");
+        JTextArea ayuda = new JTextArea("Elige a alguien de la lista para escribirle en Privado "
+                + "o hacerle una videollamada. Esc para quitarlo.");
         ayuda.setEditable(false);
         ayuda.setFocusable(false);
         ayuda.setLineWrap(true);
@@ -239,8 +249,20 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         ayuda.setOpaque(false);
         ayuda.setFont(Estilo.fuente(Font.PLAIN, 11));
         ayuda.setForeground(Estilo.TEXTO_SUAVE);
-        ayuda.setBorder(new EmptyBorder(10, 18, 14, 18));
-        lateral.add(ayuda, BorderLayout.SOUTH);
+        ayuda.setBorder(new EmptyBorder(8, 18, 14, 18));
+
+        botonVideollamada = new Estilo.Boton("Videollamada", new Estilo.Icono(Estilo.Icono.Tipo.VIDEOCAMARA, 16),
+                Estilo.SUPERFICIE, Estilo.TEXTO);
+        JPanel conBoton = new JPanel(new BorderLayout());
+        conBoton.setOpaque(false);
+        conBoton.setBorder(new EmptyBorder(10, 14, 0, 14));
+        conBoton.add(botonVideollamada, BorderLayout.CENTER);
+
+        JPanel abajo = new JPanel(new BorderLayout());
+        abajo.setOpaque(false);
+        abajo.add(conBoton, BorderLayout.NORTH);
+        abajo.add(ayuda, BorderLayout.CENTER);
+        lateral.add(abajo, BorderLayout.SOUTH);
         return lateral;
     }
 
@@ -257,7 +279,7 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         botonImagen.setToolTipText("Enviar una imagen desde un archivo");
         botonCamara = new Estilo.Boton("", new Estilo.Icono(Estilo.Icono.Tipo.CAMARA, 18),
                 Estilo.SUPERFICIE, Estilo.TEXTO);
-        botonCamara.setToolTipText("Tomar una foto con la cámara y enviarla");
+        botonCamara.setToolTipText(TOOLTIP_CAMARA);
         botonMicrofono = new Estilo.Boton("", new Estilo.Icono(Estilo.Icono.Tipo.MICROFONO, 18),
                 Estilo.SUPERFICIE, Estilo.TEXTO);
         botonMicrofono.setToolTipText(TOOLTIP_MICROFONO);
@@ -335,6 +357,7 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
             campoTexto.setAyuda("Enter = a todos  ·  Privado = solo a " + elegido);
             botonPrivado.setToolTipText("Enviar en privado a " + elegido);
         }
+        actualizarBotones();
     }
 
     private void ponerEstado(String texto, Color color) {
@@ -342,14 +365,53 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         lblEstado.setIcon(Estilo.punto(color));
     }
 
+    private boolean envioActivo = false;   // conectado y listo para enviar
+
     /** Activa o desactiva los botones de envío */
     private void setEnvioActivo(boolean activo) {
-        botonEnviar.setEnabled(activo);
-        botonPrivado.setEnabled(activo);
-        botonImagen.setEnabled(activo);
-        botonCamara.setEnabled(activo);
-        botonMicrofono.setEnabled(activo);
-        campoTexto.setEnabled(activo);
+        envioActivo = activo;
+        actualizarBotones();
+    }
+
+    private boolean enLlamada() {
+        VentanaLlamada l = llamada;
+        return l != null && !l.terminada();
+    }
+
+    /**
+     * Qué botón se puede usar según el momento: conectado o no, grabando una nota de voz,
+     * o en videollamada (la llamada ya usa la cámara y el micrófono).
+     */
+    private void actualizarBotones() {
+        if (botonEnviar == null || botonVideollamada == null) {
+            return;   // todavía armando la ventana
+        }
+        boolean grabando = grabacion != null;
+        boolean llamando = enLlamada();
+        botonEnviar.setEnabled(envioActivo);
+        campoTexto.setEnabled(envioActivo);
+        botonPrivado.setEnabled(envioActivo && !grabando);
+        botonImagen.setEnabled(envioActivo && !grabando);
+        botonCamara.setEnabled(envioActivo && !grabando && !llamando);
+        botonMicrofono.setEnabled(envioActivo && !llamando);
+        botonDispositivos.setEnabled(!grabando && !llamando);
+
+        String elegido = listaUsuarios.getSelectedValue();
+        boolean alguienMas = elegido != null && !elegido.equals(nombre);
+        botonVideollamada.setEnabled(envioActivo && !grabando && !llamando && alguienMas);
+        if (llamando) {
+            botonVideollamada.setToolTipText("Ya estás en una videollamada");
+            botonCamara.setToolTipText("La cámara la está usando la videollamada");
+            botonMicrofono.setToolTipText("El micrófono lo está usando la videollamada");
+        } else {
+            botonVideollamada.setToolTipText(alguienMas
+                    ? "Videollamada con " + elegido
+                    : "Elige a alguien de la lista (que no seas tú) para llamarle");
+            botonCamara.setToolTipText(TOOLTIP_CAMARA);
+            if (!grabando) {
+                botonMicrofono.setToolTipText(TOOLTIP_MICROFONO);
+            }
+        }
     }
 
     // ================================================================
@@ -420,24 +482,66 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         }, "hilo-imagen").start();
     }
 
-    /** Toma una foto con la cámara y la envía (en hilo aparte para no congelar) */
+    /**
+     * Abre el "espejo": la cámara en vivo para acomodarse, tomar la foto y revisarla.
+     * Solo se envía si se pulsa "Enviar foto".
+     */
     private void accionEnviarFoto() {
-        // Desactivado mientras se toma la foto: dos clics seguidos abrirían la cámara dos veces a la vez
-        botonCamara.setEnabled(false);
-        botonCamara.setToolTipText("Tomando la foto…");
-        new Thread(() -> {
-            BufferedImage foto = Camara.tomarFoto(camaraElegida);
-            SwingUtilities.invokeLater(() -> {
-                botonCamara.setEnabled(campoTexto.isEnabled());
-                botonCamara.setToolTipText("Tomar una foto con la cámara y enviarla");
-                if (foto == null) {
-                    panelMensajes.agregarError("No se encontró cámara o no se pudo tomar la foto.");
-                }
-            });
-            if (foto != null) {
-                clienteRed.enviarImagen(foto);
-            }
-        }, "hilo-camara").start();
+        DialogoFoto.Resultado r = DialogoFoto.pedir(this, camaraElegida);   // modal: espera
+        if (!java.util.Objects.equals(r.camara, camaraElegida)) {
+            camaraElegida = r.camara;   // si cambió de cámara en el espejo, se queda con esa
+        }
+        if (r.foto != null) {
+            // Achicarla y pasarla a Base64 tarda un poco: fuera del hilo de la ventana
+            new Thread(() -> clienteRed.enviarImagen(r.foto), "hilo-enviar-foto").start();
+        }
+        campoTexto.requestFocusInWindow();
+    }
+
+    // ================================================================
+    //  Videollamada
+    // ================================================================
+
+    private void accionVideollamada() {
+        String destino = listaUsuarios.getSelectedValue();
+        if (destino == null || destino.equals(nombre) || enLlamada()) {
+            return;
+        }
+        llamada = VentanaLlamada.llamar(clienteRed, nombre, destino, camaraElegida, microfonoElegido, this);
+        panelMensajes.agregarAviso("Llamando a " + destino + "…");
+        actualizarBotones();
+    }
+
+    /** Alguien nos llama: se abre la ventana de la llamada con Contestar / Rechazar. */
+    private void llamadaEntrante(String de) {
+        if (enLlamada()) {
+            clienteRed.enviarLlamada(de, comun.Protocolo.OCUPADO);
+            panelMensajes.agregarAviso(de + " intentó llamarte mientras estabas en otra llamada.");
+            return;
+        }
+        if (grabacion != null) {
+            terminarGrabacion(false);   // el micrófono lo va a necesitar la llamada
+            panelMensajes.agregarAviso("Se canceló la nota de voz por la llamada entrante.");
+        }
+        llamada = VentanaLlamada.recibir(clienteRed, nombre, de, camaraElegida, microfonoElegido, this);
+        panelMensajes.agregarAviso(de + " te está llamando");
+        avisarNuevo();
+        actualizarBotones();
+    }
+
+    @Override
+    public void alTerminarLlamada(VentanaLlamada terminada, String resumen) {
+        if (llamada == terminada) {
+            llamada = null;
+        }
+        panelMensajes.agregarAviso(resumen);
+        actualizarBotones();
+    }
+
+    @Override
+    public void alCambiarDispositivos(String camara, Mixer.Info microfono) {
+        camaraElegida = camara;
+        microfonoElegido = microfono;
     }
 
     // ================================================================
@@ -462,10 +566,7 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         botonMicrofono.setToolTipText("Terminar y enviar la nota de voz");
         botonMicrofono.setIcon(new Estilo.Icono(Estilo.Icono.Tipo.DETENER, 18));
         botonMicrofono.setForeground(Estilo.PELIGRO);
-        botonPrivado.setEnabled(false);
-        botonImagen.setEnabled(false);
-        botonCamara.setEnabled(false);
-        botonDispositivos.setEnabled(false);
+        actualizarBotones();
         actualizarGrabacion();
         relojGrabacion.start();
     }
@@ -491,7 +592,6 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
         botonMicrofono.setToolTipText(TOOLTIP_MICROFONO);
         botonMicrofono.setIcon(new Estilo.Icono(Estilo.Icono.Tipo.MICROFONO, 18));
         botonMicrofono.setForeground(Estilo.TEXTO);
-        botonDispositivos.setEnabled(true);
         setEnvioActivo(!desconectado);
         campoTexto.requestFocusInWindow();
         if (g == null) {
@@ -653,7 +753,42 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
             }
             lblConectados.setText("EN LÍNEA — " + modeloUsuarios.size());
             actualizarDestinatario();
+
+            // Si la persona con la que hablamos salió del chat, la llamada termina
+            VentanaLlamada l = llamada;
+            if (l != null && !l.terminada() && !modeloUsuarios.contains(l.getOtro())) {
+                l.otroSeDesconecto();
+            }
         });
+    }
+
+    @Override
+    public void alRecibirLlamada(String de, String accion) {
+        SwingUtilities.invokeLater(() -> {
+            VentanaLlamada l = llamada;
+            if (l != null && !l.terminada() && l.getOtro().equals(de)) {
+                l.alRecibirLlamada(accion);          // es de la llamada en curso
+            } else if (accion.equals(comun.Protocolo.INVITAR)) {
+                llamadaEntrante(de);
+            }
+            // cualquier otro aviso de una llamada que ya terminó se ignora
+        });
+    }
+
+    @Override
+    public void alRecibirVideo(String de, BufferedImage cuadro) {
+        VentanaLlamada l = llamada;   // sin invokeLater: la vista lo acepta desde cualquier hilo
+        if (l != null && l.getOtro().equals(de)) {
+            l.alRecibirVideo(cuadro);
+        }
+    }
+
+    @Override
+    public void alRecibirVoz(String de, byte[] ulaw) {
+        VentanaLlamada l = llamada;   // sin invokeLater: el audio no puede esperar a la ventana
+        if (l != null && l.getOtro().equals(de)) {
+            l.alRecibirVoz(ulaw);
+        }
     }
 
     @Override
@@ -670,6 +805,10 @@ public class VentanaChat extends JFrame implements OyenteMensajes {
             desconectado = true;
             if (grabacion != null) {
                 terminarGrabacion(false);
+            }
+            VentanaLlamada l = llamada;
+            if (l != null && !l.terminada()) {
+                l.sinConexion();
             }
             panelMensajes.agregarError("Se perdió la conexión con el servidor.");
             ponerEstado("Desconectado", Estilo.PELIGRO);

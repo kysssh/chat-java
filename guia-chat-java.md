@@ -97,6 +97,9 @@ MSG|texto            MSG|hola a todos         2        Mensaje para todos.
 PRIV|para|texto      PRIV|ana|hola ana        3        Mensaje privado (solo mismo servidor).
 IMG|base64           IMG|/9j/4AAQSk...        2        Imagen convertida a texto (Nivel 3).
 AUDIO|base64         AUDIO|UklGRi...          2        Nota de voz: WAV convertido a texto (Nivel 3).
+LLAMADA|para|accion  LLAMADA|ana|INVITAR      3        Videollamada: invitar, aceptar, colgar… (ver abajo).
+VIDEO|para|base64    VIDEO|ana|/9j/4AAQ...    3        Un cuadro de la cámara en vivo (JPG 400x300).
+VOZ|para|base64      VOZ|ana|/f7+/v...        3        40 ms de micrófono en vivo (μ-law, 8000 Hz).
 SALIR                SALIR                    1        Me desconecto.
 ```
 
@@ -110,7 +113,25 @@ IMG|de|base64        IMG|juan|/9j/4AAQSk...   3        Alguien mandó una imagen
 AUDIO|de|base64      AUDIO|juan|UklGRi...     3        Alguien mandó una nota de voz.
 INFO|texto           INFO|juan se unió        2        Aviso del sistema (entró / salió alguien).
 USUARIOS|a,b,c       USUARIOS|ana,juan        2        Lista de conectados en ESTE servidor.
+LLAMADA|de|accion    LLAMADA|juan|INVITAR     3        Aviso de videollamada de "de".
+VIDEO|de|base64      VIDEO|juan|/9j/4AAQ...   3        Cuadro de video de "de".
+VOZ|de|base64        VOZ|juan|/f7+/v...       3        Audio en vivo de "de".
 ERROR|texto          ERROR|nombre en uso      2        Algo salió mal.
+```
+
+**Videollamada.** `LLAMADA`, `VIDEO` y `VOZ` se reparten como `PRIV`: solo a `para`, y solo dentro
+del mismo servidor. Las acciones de `LLAMADA` son `INVITAR`, `ACEPTAR`, `RECHAZAR`, `OCUPADO`,
+`COLGAR`, `CAMARA_ON`, `CAMARA_OFF`, `MICROFONO_ON` y `MICROFONO_OFF`. Si `para` no está conectado,
+el servidor le responde al que llama `LLAMADA|para|NO_DISPONIBLE`.
+
+```
+juan → servidor :  LLAMADA|ana|INVITAR
+servidor → ana  :  LLAMADA|juan|INVITAR      ← a ana le suena
+ana  → servidor :  LLAMADA|juan|ACEPTAR
+servidor → juan :  LLAMADA|ana|ACEPTAR       ← empieza la llamada
+juan → servidor :  VIDEO|ana|/9j/...  y  VOZ|ana|/f7+...   (muchas veces por segundo, los dos)
+ana  → servidor :  LLAMADA|juan|COLGAR
+servidor → juan :  LLAMADA|ana|COLGAR
 ```
 
 ### Entre servidores (Nivel 2)
@@ -120,7 +141,7 @@ SERVIDOR|id          SERVIDOR|5001            2        Primera línea: "no soy c
 ```
 
 Después de esa línea, los servidores simplemente se pasan las líneas `MSG|...`, `INFO|...`, `IMG|...` y `AUDIO|...` **tal cual**.
-(No se pasan `USUARIOS`, `PRIV` ni `ERROR`: esos son solo locales.)
+(No se pasan `USUARIOS`, `PRIV`, `LLAMADA`, `VIDEO`, `VOZ` ni `ERROR`: esos son solo locales.)
 
 ### Ejemplo de una conversación completa
 

@@ -31,4 +31,13 @@ public interface OyenteMensajes {
 
     /** Se perdió la conexión con el servidor */
     void alDesconectarse();
+
+    /** Aviso de videollamada: "LLAMADA|de|accion" (INVITAR, ACEPTAR, COLGAR…, ver Protocolo) */
+    void alRecibirLlamada(String de, String accion);
+
+    /** Cuadro de video en vivo: "VIDEO|de|base64" (ya decodificado) */
+    void alRecibirVideo(String de, BufferedImage cuadro);
+
+    /** Trozo de audio en vivo: "VOZ|de|base64" (ya decodificado: μ-law, 8000 Hz, mono) */
+    void alRecibirVoz(String de, byte[] ulaw);
 }

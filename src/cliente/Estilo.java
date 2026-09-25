@@ -174,7 +174,10 @@ final class Estilo {
     // ---- Íconos dibujados con líneas (así no dependen de emojis ni de archivos) ----
 
     static class Icono implements Icon {
-        enum Tipo { ENVIAR, IMAGEN, CAMARA, CANDADO, CHAT, MICROFONO, DETENER, PLAY, AJUSTES }
+        enum Tipo {
+            ENVIAR, IMAGEN, CAMARA, CANDADO, CHAT, MICROFONO, DETENER, PLAY, AJUSTES,
+            VIDEOCAMARA, VIDEO_APAGADO, MIC_APAGADO, COLGAR, ESPEJO
+        }
 
         private final Tipo tipo;
         private final int tam;
@@ -240,11 +243,57 @@ final class Estilo {
                 case CHAT:
                     g2.fill(formaChat());
                     break;
-                case MICROFONO: {
+                case MICROFONO:
+                case MIC_APAGADO: {
                     g2.draw(new RoundRectangle2D.Float(6.5f, 1.5f, 5, 9.5f, 5, 5));
                     g2.draw(new Arc2D.Float(3.5f, 4, 11, 9.5f, 180, 180, Arc2D.OPEN));
                     g2.draw(new java.awt.geom.Line2D.Float(9, 13.5f, 9, 16.5f));
                     g2.draw(new java.awt.geom.Line2D.Float(6, 16.5f, 12, 16.5f));
+                    if (tipo == Tipo.MIC_APAGADO) {
+                        g2.draw(new java.awt.geom.Line2D.Float(2.5f, 2, 16, 16.5f));
+                    }
+                    break;
+                }
+                case VIDEOCAMARA:
+                case VIDEO_APAGADO: {
+                    g2.draw(new RoundRectangle2D.Float(1.5f, 5, 10.5f, 8.5f, 3, 3));
+                    Path2D lente = new Path2D.Float();
+                    lente.moveTo(12, 8);
+                    lente.lineTo(16.5, 5.5);
+                    lente.lineTo(16.5, 12.5);
+                    lente.lineTo(12, 10.5);
+                    lente.closePath();
+                    g2.draw(lente);
+                    if (tipo == Tipo.VIDEO_APAGADO) {
+                        g2.draw(new java.awt.geom.Line2D.Float(2, 2, 16.5f, 16.5f));
+                    }
+                    break;
+                }
+                case COLGAR: {
+                    // auricular de teléfono acostado
+                    g2.setStroke(new BasicStroke(2.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g2.draw(new Arc2D.Float(2.5f, 6.5f, 13, 10, 20, 140, Arc2D.OPEN));
+                    g2.fill(new RoundRectangle2D.Float(1.2f, 9.2f, 5, 3.6f, 2, 2));
+                    g2.fill(new RoundRectangle2D.Float(11.8f, 9.2f, 5, 3.6f, 2, 2));
+                    break;
+                }
+                case ESPEJO: {
+                    // dos triángulos reflejados a cada lado de una línea
+                    Path2D izq = new Path2D.Float();
+                    izq.moveTo(7, 4);
+                    izq.lineTo(7, 14);
+                    izq.lineTo(2, 14);
+                    izq.closePath();
+                    g2.draw(izq);
+                    Path2D der = new Path2D.Float();
+                    der.moveTo(11, 4);
+                    der.lineTo(11, 14);
+                    der.lineTo(16, 14);
+                    der.closePath();
+                    g2.fill(der);
+                    g2.setStroke(new BasicStroke(1.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                            1, new float[] {1.5f, 2}, 0));
+                    g2.draw(new java.awt.geom.Line2D.Float(9, 2, 9, 16));
                     break;
                 }
                 case DETENER:
@@ -309,7 +358,7 @@ final class Estilo {
         private static final int PAD_H = 14;
         private static final int PAD_V = 8;
         private static final int ESPACIO = 7;
-        private final Color fondo;
+        private Color fondo;
 
         Boton(String texto, Icon icono, Color fondo, Color colorTexto) {
             super(texto, icono);
@@ -322,6 +371,12 @@ final class Estilo {
             setOpaque(false);
             setRolloverEnabled(true);
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        }
+
+        /** Cambia el color de fondo (por ejemplo, rojo cuando el micrófono está silenciado). */
+        void setFondo(Color fondo) {
+            this.fondo = fondo;
+            repaint();
         }
 
         @Override

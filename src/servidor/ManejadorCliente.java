@@ -112,6 +112,27 @@ public class ManejadorCliente implements Runnable {
                 }
                 break;
 
+            case Protocolo.LLAMADA: {
+                String[] campos = Protocolo.partir(linea, 3);   // LLAMADA|para|accion
+                if (campos.length < 3) {
+                    enviar(Protocolo.armar(Protocolo.ERROR, "formato: LLAMADA|para|accion"));
+                } else if (!servidor.reenviar(Protocolo.LLAMADA, nombre, campos[1], campos[2])) {
+                    // Así el que llama sabe al instante que no hay a quién
+                    enviar(Protocolo.armar(Protocolo.LLAMADA, campos[1], Protocolo.NO_DISPONIBLE));
+                }
+                break;
+            }
+
+            case Protocolo.VIDEO:
+            case Protocolo.VOZ: {
+                // VIDEO|para|base64 y VOZ|para|base64: si el otro ya no está, se descartan sin avisar
+                String[] campos = Protocolo.partir(linea, 3);
+                if (campos.length == 3 && !campos[2].isEmpty()) {
+                    servidor.reenviar(p[0], nombre, campos[1], campos[2]);
+                }
+                break;
+            }
+
             case Protocolo.SALIR:
                 cerrar();
                 break;

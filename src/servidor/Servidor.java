@@ -146,12 +146,24 @@ public class Servidor {
     }
 
     /** Envía PRIV|de|texto a 'para'. Devuelve false si ese usuario no está. */
-    public synchronized boolean enviarPrivado(String de, String para, String texto) {
-        ManejadorCliente destino = clientes.get(para);
+    public boolean enviarPrivado(String de, String para, String texto) {
+        return reenviar(Protocolo.PRIV, de, para, texto);
+    }
+
+    /**
+     * Envía tipo|de|contenido solo a 'para' (privados y videollamada). Devuelve false si no está.
+     * Se busca con el candado del servidor, pero se envía fuera de él: los cuadros de video
+     * llegan muchas veces por segundo y no deben frenar al resto del chat.
+     */
+    public boolean reenviar(String tipo, String de, String para, String contenido) {
+        ManejadorCliente destino;
+        synchronized (this) {
+            destino = clientes.get(para);
+        }
         if (destino == null) {
             return false;
         }
-        destino.enviar(Protocolo.armar(Protocolo.PRIV, de, texto));
+        destino.enviar(Protocolo.armar(tipo, de, contenido));
         return true;
     }
 

@@ -92,10 +92,11 @@ public class ClienteConsola {
         }
     }
 
-    /** IMG y AUDIO traen cientos de KB en Base64: se muestra solo quién lo mandó y cuánto pesa. */
+    /** IMG, AUDIO, VIDEO y VOZ traen mucho Base64: se muestra solo quién lo mandó y cuánto pesa. */
     private static String resumir(String linea) {
         String[] p = Protocolo.partir(linea, 3);
-        if (p.length == 3 && (p[0].equals(Protocolo.IMG) || p[0].equals(Protocolo.AUDIO))) {
+        if (p.length == 3 && (p[0].equals(Protocolo.IMG) || p[0].equals(Protocolo.AUDIO)
+                || p[0].equals(Protocolo.VIDEO) || p[0].equals(Protocolo.VOZ))) {
             return p[0] + "|" + p[1] + "|(" + (p[2].length() / 1024) + " KB en Base64)";
         }
         return linea;

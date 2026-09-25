@@ -28,6 +28,23 @@ public final class Protocolo {
     public static final String ERROR    = "ERROR";    // algo salió mal
     public static final String SERVIDOR = "SERVIDOR"; // servidor → servidor (Nivel 2)
 
+    // ---- Videollamada (entre dos personas del mismo servidor, como PRIV) ----
+    public static final String LLAMADA  = "LLAMADA";  // LLAMADA|para|accion  →  LLAMADA|de|accion
+    public static final String VIDEO    = "VIDEO";    // VIDEO|para|base64 (un cuadro JPG)  →  VIDEO|de|base64
+    public static final String VOZ      = "VOZ";      // VOZ|para|base64 (audio en vivo)   →  VOZ|de|base64
+
+    // Acciones de LLAMADA
+    public static final String INVITAR       = "INVITAR";        // quiero llamarte
+    public static final String ACEPTAR       = "ACEPTAR";        // contesto
+    public static final String RECHAZAR      = "RECHAZAR";       // no contesto
+    public static final String OCUPADO       = "OCUPADO";        // ya estoy en otra llamada
+    public static final String COLGAR        = "COLGAR";         // termino (o cancelo antes de que conteste)
+    public static final String NO_DISPONIBLE = "NO_DISPONIBLE";  // (del servidor) esa persona no está conectada
+    public static final String CAMARA_ON     = "CAMARA_ON";      // prendí / apagué mi cámara
+    public static final String CAMARA_OFF    = "CAMARA_OFF";
+    public static final String MICROFONO_ON  = "MICROFONO_ON";   // activé / silencié mi micrófono
+    public static final String MICROFONO_OFF = "MICROFONO_OFF";
+
     /**
      * Une varias partes con "|".
      * Ejemplo: armar("MSG", "juan", "hola")  ->  "MSG|juan|hola"
